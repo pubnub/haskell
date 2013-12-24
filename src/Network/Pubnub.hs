@@ -18,7 +18,7 @@ import Network.Pubnub.Types
 
 import Data.Aeson
 import Network.HTTP.Conduit
-import Control.Monad.IO.Class
+import Control.Monad.Trans
 import Control.Exception.Lifted (try)
 
 import qualified Data.ByteString.Char8 as B
@@ -39,7 +39,8 @@ subscribe pn = do
     eres <- try $ httpLbs req manager
     case eres of
       Right r -> return (decode $ responseBody r)
-      Left (_ :: HttpException) -> liftIO $ subscribe pn
+      Left (ResponseTimeout :: HttpException) -> lift $ subscribe pn
+      Left _ -> return Nothing
 
 publish :: PN a b -> a -> IO (Maybe PublishResponse)
 publish pn msg = do
