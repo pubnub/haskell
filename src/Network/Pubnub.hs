@@ -48,7 +48,7 @@ publish pn msg = do
                          , bsFromInteger $ jsonp_callback pn
                          , head . L.toChunks $ encodeJson pn msg]
   res <- withManager $ httpLbs req
-  return (decode $ responseBody res :: Maybe PublishResponse)
+  return (decode $ responseBody res)
 
 buildRequest :: PN a b -> [B.ByteString] -> IO Request
 buildRequest pn elems = do
