@@ -45,8 +45,7 @@ newClient name = Client { clientName = name
 
 runClient :: Client Msg [Msg] -> IO ()
 runClient Client{..} = do
-  Just t <- timestamp
-  _ <- race cli (receiver t)
+  _ <- race cli (receiver (Timestamp 0))
   return ()
   where
     cli = forever $ do
