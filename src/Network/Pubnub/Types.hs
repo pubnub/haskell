@@ -20,20 +20,17 @@ import Data.Text.Read
 import qualified Data.Vector as V
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
 
-data PN a b = PN { origin         :: B.ByteString
-                 , pub_key        :: B.ByteString
-                 , sub_key        :: B.ByteString
-                 , sec_key        :: B.ByteString
-                 , channel        :: B.ByteString
-                 , jsonp_callback :: Integer
-                 , time_token     :: Timestamp
-                 , uuid           :: B.ByteString
-                 , encodeJson     :: (a -> L.ByteString)
-                 , decodeJson     :: (L.ByteString -> Maybe b) }
+data PN = PN { origin         :: B.ByteString
+             , pub_key        :: B.ByteString
+             , sub_key        :: B.ByteString
+             , sec_key        :: B.ByteString
+             , channel        :: B.ByteString
+             , jsonp_callback :: Integer
+             , time_token     :: Timestamp
+             , uuid           :: B.ByteString }
 
-defaultPN :: PN Value Value
+defaultPN :: PN
 defaultPN = PN { origin         = "pubsub.pubnub.com"
                , pub_key        = B.empty
                , sub_key        = B.empty
@@ -41,9 +38,7 @@ defaultPN = PN { origin         = "pubsub.pubnub.com"
                , channel        = B.empty
                , jsonp_callback = 0
                , time_token     = Timestamp 0
-               , uuid           = B.empty
-               , encodeJson     = encode :: (Value -> L.ByteString)
-               , decodeJson     = decode :: (L.ByteString -> Maybe Value) }
+               , uuid           = B.empty }
 
 newtype Timestamp = Timestamp Integer
                   deriving (Show)

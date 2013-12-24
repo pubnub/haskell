@@ -26,8 +26,8 @@ instance FromJSON Msg
 
 type ClientName = B.ByteString
 
-data Client a b = Client { clientName :: ClientName
-                         , pn         :: PN a b }
+data Client = Client { clientName :: ClientName
+                     , pn         :: PN }
 
 main :: IO ()
 main = do
@@ -35,15 +35,13 @@ main = do
   username <- B.getLine
   runClient $ newClient username
 
-newClient :: ClientName -> Client Msg [Msg]
+newClient :: ClientName -> Client
 newClient name = Client { clientName = name
                         , pn = defaultPN { channel="testchathaskell"
                                          , sub_key="demo"
-                                         , pub_key="demo"
-                                         , decodeJson=decodeMsg
-                                         , encodeJson=encodeMsg }}
+                                         , pub_key="demo" }}
 
-runClient :: Client Msg [Msg] -> IO ()
+runClient :: Client -> IO ()
 runClient Client{..} = do
   _ <- race cli (receiver (Timestamp 0))
   return ()

@@ -30,7 +30,7 @@ timestamp = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: FromJSON b => PN a b -> IO (Maybe (SubscribeResponse b))
+subscribe :: FromJSON b => PN -> IO (Maybe (SubscribeResponse b))
 subscribe pn = do
   req <- buildRequest pn ["subscribe", (sub_key pn), (channel pn)
                          , bsFromInteger $ jsonp_callback pn
@@ -42,15 +42,15 @@ subscribe pn = do
       Left (ResponseTimeout :: HttpException) -> lift $ subscribe pn
       Left _ -> return Nothing
 
-publish :: PN a b -> a -> IO (Maybe PublishResponse)
+publish :: ToJSON a => PN -> a -> IO (Maybe PublishResponse)
 publish pn msg = do
   req <- buildRequest pn ["publish", (pub_key pn), (sub_key pn), (sec_key pn), (channel pn)
                          , bsFromInteger $ jsonp_callback pn
-                         , head . L.toChunks $ encodeJson pn msg]
+                         , head . L.toChunks $ encode msg]
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-buildRequest :: PN a b -> [B.ByteString] -> IO Request
+buildRequest :: PN -> [B.ByteString] -> IO Request
 buildRequest pn elems = do
   req <- parseUrl "http://"
   return req { host   = (origin pn)
