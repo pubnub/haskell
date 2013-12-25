@@ -8,13 +8,18 @@ module Network.Pubnub
        , Timestamp(..)
 
          -- API function
-       , timestamp
-       , subscribe
+       , time
        , publish
+       , subscribe
+       , hereNow
+       , presence
+       , history
+       , leave
+       , getUuid
+       , unsubscribe
        ) where
 
 import Network.Pubnub.Types
-
 
 import Data.Aeson
 import Network.HTTP.Conduit
@@ -24,13 +29,13 @@ import Control.Exception.Lifted (try)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 
-timestamp :: IO (Maybe Timestamp)
-timestamp = do
+time :: IO (Maybe Timestamp)
+time = do
   req <- buildRequest (defaultPN) ["time", "0"]
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: FromJSON b => PN -> (b -> IO ()) -> IO ()
+subscribe :: (FromJSON b) => PN -> (b -> IO ()) -> IO ()
 subscribe pn fn = do
   req <- buildRequest pn ["subscribe", (sub_key pn), (channel pn)
                          , bsFromInteger $ jsonp_callback pn
@@ -57,6 +62,32 @@ publish pn msg = do
                          , head . L.toChunks $ encode msg]
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
+
+hereNow :: PN -> IO (Maybe HereNow)
+hereNow pn = do
+  req <- buildRequest pn ["v2", "presence", "sub_key", (sub_key pn), "channel", (channel pn)]
+  res <- withManager $ httpLbs req
+  return (decode $ responseBody res)
+
+presence :: PN -> IO (Maybe Presence)
+presence pn = do
+  return Nothing
+
+history :: FromJSON b => PN -> IO (Maybe [b])
+history pn = do
+  return Nothing
+
+leave :: PN -> IO ()
+leave pn = do
+  return ()
+
+getUuid :: PN -> IO (Maybe UUID)
+getUuid pn = do
+  return Nothing
+
+unsubscribe :: PN -> IO ()
+unsubscribe pn = do
+  return ()
 
 buildRequest :: PN -> [B.ByteString] -> IO Request
 buildRequest pn elems = do

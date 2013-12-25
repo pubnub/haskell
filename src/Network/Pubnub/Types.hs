@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 
@@ -6,16 +7,21 @@ module Network.Pubnub.Types
          -- Record construction
          Timestamp(..)
        , PN(..)
+       , defaultPN
        , SubscribeResponse(..)
        , PublishResponse(..)
-       , defaultPN
+       , UUID
+       , Presence(..)
+       , HereNow(..)
        ) where
 
 import GHC.Generics
 
-import Data.Aeson
 import Control.Applicative ((<$>), pure, empty)
 import Data.Text.Read
+
+import Data.Aeson
+import Data.Aeson.TH
 
 import qualified Data.Vector as V
 import qualified Data.Text as T
@@ -27,8 +33,7 @@ data PN = PN { origin         :: B.ByteString
              , sec_key        :: B.ByteString
              , channel        :: B.ByteString
              , jsonp_callback :: Integer
-             , time_token     :: Timestamp
-             , uuid           :: B.ByteString }
+             , time_token     :: Timestamp }
 
 defaultPN :: PN
 defaultPN = PN { origin         = "pubsub.pubnub.com"
@@ -37,8 +42,7 @@ defaultPN = PN { origin         = "pubsub.pubnub.com"
                , sec_key        = "0"
                , channel        = B.empty
                , jsonp_callback = 0
-               , time_token     = Timestamp 0
-               , uuid           = B.empty }
+               , time_token     = Timestamp 0 }
 
 newtype Timestamp = Timestamp Integer
                   deriving (Show)
@@ -61,8 +65,32 @@ data SubscribeResponse a = SubscribeResponse (a, Timestamp)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
 
+type UUID = B.ByteString
+type Occupancy = Integer
+
+data Presence = Presence { action            :: B.ByteString
+                         , timestamp         :: Integer
+                         , uuid              :: UUID
+                         , presenceOccupancy :: Occupancy }
+              deriving (Show)
+
+data HereNow = HereNow { uuids            :: [UUID]
+                       , herenowOccupancy :: Occupancy }
+             deriving (Show)
+
 decimalRight :: T.Text -> Integer
 decimalRight x =
   case decimal x of
     Right (i, "") -> i
     _             -> 0
+
+
+$(deriveJSON defaultOptions{ fieldLabelModifier=(\x -> case x of
+                                                    "presenceOccupancy" -> "occupancy"
+                                                    _ -> x
+                                                    ) } ''Presence)
+
+$(deriveJSON defaultOptions{ fieldLabelModifier=(\x -> case x of
+                                                    "herenowOccupancy" -> "occupancy"
+                                                    _ -> x
+                                                    ) } ''HereNow)
