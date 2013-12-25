@@ -42,7 +42,7 @@ newClient name = Client { clientName = name
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
-  _ <- race cli (receiver (Timestamp 0))
+  _ <- race cli receiver
   return ()
   where
     cli = forever $ do
@@ -50,8 +50,8 @@ runClient Client{..} = do
       publish pn (Msg { username=clientName
                       , msg=msg })
 
-    receiver time_token = do
-      subscribe (pn { time_token=time_token }) (output)
+    receiver = do
+      subscribe pn (output)
 
 output :: Maybe Msg -> IO ()
 output (Just m) = B.putStrLn $ B.concat ["<", (username m), "> : ", (msg m)]
