@@ -30,17 +30,25 @@ timestamp = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: FromJSON b => PN -> IO (Maybe (SubscribeResponse b))
-subscribe pn = do
+subscribe :: FromJSON b => PN -> (b -> IO ()) -> IO ()
+subscribe pn fn = do
   req <- buildRequest pn ["subscribe", (sub_key pn), (channel pn)
                          , bsFromInteger $ jsonp_callback pn
                          , head . L.toChunks $ encode (time_token pn)]
   withManager $ \manager -> do
     eres <- try $ httpLbs req manager
     case eres of
-      Right r -> return (decode $ responseBody r)
-      Left (ResponseTimeout :: HttpException) -> lift $ subscribe pn
-      Left _ -> return Nothing
+      Right r -> do
+        case decode $ responseBody r of
+          Just (SubscribeResponse (resp, t)) -> do
+            _ <- lift $ mapM fn resp
+            lift $ subscribe (pn { time_token=t }) fn
+          Nothing -> do
+            lift $ subscribe pn fn
+      Left (ResponseTimeout :: HttpException) -> do
+        lift $ subscribe pn fn
+      Left _ ->
+        return ()
 
 publish :: ToJSON a => PN -> a -> IO (Maybe PublishResponse)
 publish pn msg = do

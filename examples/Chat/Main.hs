@@ -5,7 +5,6 @@
 module Main where
 
 import Network.Pubnub
-import Network.Pubnub.Types
 
 import GHC.Generics
 import Data.Aeson
@@ -52,19 +51,11 @@ runClient Client{..} = do
                       , msg=msg })
 
     receiver time_token = do
-      msg <- subscribe (pn { time_token=time_token })
-      _ <- output msg
-      receiver (getTimeToken msg)
+      subscribe (pn { time_token=time_token }) (output)
 
-getTimeToken :: Maybe (SubscribeResponse [Msg]) -> Timestamp
-getTimeToken (Just (SubscribeResponse (_, t))) = t
-getTimeToken Nothing = Timestamp 0
-
-output :: Maybe (SubscribeResponse [Msg]) -> IO [()]
-output (Just (SubscribeResponse (msgs, _))) = do
-  mapM (\x -> B.putStrLn $ B.concat ["<", (username x), "> : ", (msg x)]) msgs
-output Nothing = do
-  return [()]
+output :: Maybe Msg -> IO ()
+output (Just m) = B.putStrLn $ B.concat ["<", (username m), "> : ", (msg m)]
+output Nothing = return ()
 
 encodeMsg :: Msg -> L.ByteString
 encodeMsg = encode
