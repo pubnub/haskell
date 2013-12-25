@@ -65,7 +65,7 @@ publish pn msg = do
 
 hereNow :: PN -> IO (Maybe HereNow)
 hereNow pn = do
-  req <- buildRequest pn ["v2", "presence", "sub_key", (sub_key pn), "channel", (channel pn)]
+  req <- buildRequest pn ["v2", "presence", "sub-key", (sub_key pn), "channel", (channel pn)]
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -73,9 +73,11 @@ presence :: PN -> IO (Maybe Presence)
 presence pn = do
   return Nothing
 
-history :: FromJSON b => PN -> IO (Maybe [b])
-history pn = do
-  return Nothing
+history :: FromJSON b => PN -> HistoryOptions -> IO (Maybe (History b))
+history pn options = do
+  req <- buildRequest pn ["v2", "history", "sub-key", (sub_key pn), "channel", (channel pn)]
+  res <- withManager $ httpLbs req
+  return (decode $ responseBody res)
 
 leave :: PN -> IO ()
 leave pn = do

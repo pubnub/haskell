@@ -13,6 +13,9 @@ module Network.Pubnub.Types
        , UUID
        , Presence(..)
        , HereNow(..)
+       , History(..)
+       , HistoryOptions(..)
+       , defaultHistoryOptions
        ) where
 
 import GHC.Generics
@@ -77,6 +80,21 @@ data Presence = Presence { action            :: B.ByteString
 data HereNow = HereNow { uuids            :: [UUID]
                        , herenowOccupancy :: Occupancy }
              deriving (Show)
+
+data History a = History [a] Integer Integer
+               deriving (Show, Generic)
+
+instance (FromJSON a) => FromJSON (History a)
+
+data HistoryOptions = HistoryOptions { start   :: Maybe Integer
+                                     , end     :: Maybe Integer
+                                     , reverseO :: Maybe Bool
+                                     , count   :: Maybe Integer }
+
+defaultHistoryOptions = HistoryOptions { start   = Nothing
+                                       , end     = Nothing
+                                       , reverseO = Nothing
+                                       , count   = Nothing }
 
 decimalRight :: T.Text -> Integer
 decimalRight x =
