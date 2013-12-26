@@ -3,6 +3,7 @@
 module Main where
 
 import Network.Pubnub
+import Network.Pubnub.Types
 import Data.Aeson
 import Control.Concurrent
 import qualified Data.ByteString.Lazy as L
@@ -14,6 +15,11 @@ main = do
   _ <- threadDelay 1000000
   hello <- publish pn ("hello" :: L.ByteString)
   putStrLn (show hello)
+  hello2 <- history pn [ Start 13880217220206290
+                       , End 13880217412341907
+                       , Reverse True
+                       , Count 2] :: IO (Maybe (History Value))
+  putStrLn (show hello2)
   return ()
 
 output :: Maybe Value -> IO ()

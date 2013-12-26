@@ -4,8 +4,10 @@
 
 module Network.Pubnub.Types
        (
+         convertHistoryOptions
+
          -- Record construction
-         Timestamp(..)
+       , Timestamp(..)
        , PN(..)
        , defaultPN
        , SubscribeResponse(..)
@@ -15,7 +17,7 @@ module Network.Pubnub.Types
        , HereNow(..)
        , History(..)
        , HistoryOptions(..)
-       , defaultHistoryOptions
+       , HistoryOption(..)
        ) where
 
 import GHC.Generics
@@ -86,22 +88,29 @@ data History a = History [a] Integer Integer
 
 instance (FromJSON a) => FromJSON (History a)
 
-data HistoryOptions = HistoryOptions { start   :: Maybe Integer
-                                     , end     :: Maybe Integer
-                                     , reverseO :: Maybe Bool
-                                     , count   :: Maybe Integer }
+data HistoryOption = Start Integer
+                    | End Integer
+                    | Reverse Bool
+                    | Count Integer
 
-defaultHistoryOptions = HistoryOptions { start   = Nothing
-                                       , end     = Nothing
-                                       , reverseO = Nothing
-                                       , count   = Nothing }
+type HistoryOptions = [HistoryOption]
+
+convertHistoryOptions :: HistoryOptions -> [(B.ByteString, B.ByteString)]
+convertHistoryOptions =
+  map (convertHistoryOption)
+
+convertHistoryOption :: HistoryOption -> (B.ByteString, B.ByteString)
+convertHistoryOption (Start i)       = ("start", B.pack $ show i)
+convertHistoryOption (End i)         = ("end", B.pack $ show i)
+convertHistoryOption (Reverse True)  = ("reverse", "true")
+convertHistoryOption (Reverse False) = ("reverse", "false")
+convertHistoryOption (Count i)       = ("count", B.pack $ show i)
 
 decimalRight :: T.Text -> Integer
 decimalRight x =
   case decimal x of
     Right (i, "") -> i
     _             -> 0
-
 
 $(deriveJSON defaultOptions{ fieldLabelModifier=(\x -> case x of
                                                     "presenceOccupancy" -> "occupancy"
