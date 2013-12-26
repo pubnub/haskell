@@ -37,7 +37,7 @@ main = do
 
 newClient :: ClientName -> Client
 newClient name = Client { clientName = name
-                        , pn = defaultPN { channel="testchathaskell"
+                        , pn = defaultPN { channel="testchathaskell2"
                                          , sub_key="demo"
                                          , pub_key="demo" }}
 

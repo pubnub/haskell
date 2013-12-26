@@ -115,7 +115,7 @@ leave pn uid = do
 
 getUuid :: IO B.ByteString
 getUuid =
-  B.pack <$> U.toString <$> nextRandom
+  B.pack . U.toString <$> nextRandom
 
 unsubscribe :: PN -> IO ()
 unsubscribe _ = do
