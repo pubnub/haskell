@@ -40,12 +40,12 @@ time = do
   return (decode $ responseBody res :: Maybe Timestamp)
 
 subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO ()
-subscribe pn uuid fn = do
+subscribe pn uid fn = do
   req <- buildRequest pn [ "subscribe"
                          , (sub_key pn)
                          , (channel pn)
                          , bsFromInteger $ jsonp_callback pn
-                         , head . L.toChunks $ encode (time_token pn)] (case uuid of
+                         , head . L.toChunks $ encode (time_token pn)] (case uid of
                                                                            Just u -> [("uuid", u)]
                                                                            Nothing -> [])
   withManager $ \manager -> do
@@ -55,11 +55,11 @@ subscribe pn uuid fn = do
         case decode $ responseBody r of
           Just (SubscribeResponse (resp, t)) -> do
             _ <- lift $ mapM fn resp
-            lift $ subscribe (pn { time_token=t }) uuid fn
+            lift $ subscribe (pn { time_token=t }) uid fn
           Nothing -> do
-            lift $ subscribe pn uuid fn
+            lift $ subscribe pn uid fn
       Left (ResponseTimeout :: HttpException) -> do
-        lift $ subscribe pn uuid fn
+        lift $ subscribe pn uid fn
       Left _ ->
         return ()
 
@@ -87,8 +87,8 @@ hereNow pn = do
   return (decode $ responseBody res)
 
 presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO ()
-presence pn uuid fn = do
-  subscribe (pn { channel=(B.concat [(channel pn), "-pnpres"]) }) (Just uuid) (fn)
+presence pn uid fn = do
+  subscribe (pn { channel=(B.concat [(channel pn), "-pnpres"]) }) (Just uid) (fn)
 
 history :: FromJSON b => PN -> HistoryOptions -> IO (Maybe (History b))
 history pn options = do
@@ -110,16 +110,15 @@ leave pn uid = do
                          , "channel"
                          , (channel pn)
                          , "leave"] [("uuid", uid)]
-  res <- withManager $ httpLbs req
+  _ <- withManager $ httpLbs req
   return ()
-
 
 getUuid :: IO B.ByteString
 getUuid =
   B.pack <$> U.toString <$> nextRandom
 
 unsubscribe :: PN -> IO ()
-unsubscribe pn = do
+unsubscribe _ = do
   return ()
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> IO Request

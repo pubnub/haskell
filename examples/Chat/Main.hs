@@ -11,7 +11,6 @@ import GHC.Generics
 import Data.Aeson
 
 import Control.Concurrent.Async
-import Control.Concurrent
 import Control.Monad
 
 import qualified Data.ByteString.Char8 as B
@@ -43,10 +42,12 @@ newClient name = Client { clientName = name
                                          , pub_key="demo" }}
 
 runClient :: Client -> IO ()
-runClient Client{..} = do
-  _ <- forkIO presenceRun
-  _ <- race cli receiver
-  return ()
+runClient Client{..} =
+  withAsync presenceRun $ \a ->
+    withAsync cli $ \b ->
+      withAsync receiver $ \c -> do
+        _ <- waitAnyCancel [a, b, c]
+        return ()
   where
     presenceRun = do
       presence pn clientName (outputPresence)
