@@ -14,6 +14,7 @@ module Network.Pubnub.Types
        , PublishResponse(..)
        , UUID
        , Presence(..)
+       , Action(..)
        , HereNow(..)
        , History(..)
        , HistoryOptions(..)
@@ -73,7 +74,21 @@ instance (FromJSON a) => FromJSON (SubscribeResponse a)
 type UUID = B.ByteString
 type Occupancy = Integer
 
-data Presence = Presence { action            :: B.ByteString
+data Action = Join | Leave | Timeout
+            deriving (Show)
+
+instance FromJSON Action where
+  parseJSON (String "join")    = pure Join
+  parseJSON (String "leave")   = pure Leave
+  parseJSON (String "timeout") = pure Timeout
+  parseJSON _                  = empty
+
+instance ToJSON Action where
+  toJSON Join    = String "join"
+  toJSON Leave   = String "leave"
+  toJSON Timeout = String "timeout"
+
+data Presence = Presence { action            :: Action
                          , timestamp         :: Integer
                          , uuid              :: UUID
                          , presenceOccupancy :: Occupancy }

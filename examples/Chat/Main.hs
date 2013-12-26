@@ -5,11 +5,13 @@
 module Main where
 
 import Network.Pubnub
+import Network.Pubnub.Types
 
 import GHC.Generics
 import Data.Aeson
 
 import Control.Concurrent.Async
+import Control.Concurrent
 import Control.Monad
 
 import qualified Data.ByteString.Char8 as B
@@ -42,16 +44,38 @@ newClient name = Client { clientName = name
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
+  _ <- forkIO presenceRun
   _ <- race cli receiver
   return ()
   where
+    presenceRun = do
+      presence pn clientName (outputPresence)
+
     cli = forever $ do
       msg <- B.getLine
-      publish pn (Msg { username=clientName
-                      , msg=msg })
+      case msg of
+        "/leave" -> do
+          leave pn clientName
+          mzero
+        _ ->
+          publish pn (Msg { username=clientName
+                          , msg=msg })
 
     receiver = do
-      subscribe pn (output)
+      subscribe pn (Just clientName) (output)
+
+outputPresence :: Maybe Presence -> IO ()
+outputPresence (Just Presence{..}) = do
+  B.putStr "** "
+  B.putStr uuid
+  case action of
+    Join ->
+      putStrLn " has joined channel"
+    Leave ->
+      putStrLn " has left channel"
+    Timeout ->
+      putStrLn " has dropped from channel"
+outputPresence _ = return ()
 
 output :: Maybe Msg -> IO ()
 output (Just m) = B.putStrLn $ B.concat ["<", (username m), "> : ", (msg m)]

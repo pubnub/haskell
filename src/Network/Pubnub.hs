@@ -22,11 +22,14 @@ module Network.Pubnub
 import Network.Pubnub.Types
 
 import Data.Aeson
+import Data.UUID.V4
 import Network.HTTP.Conduit
 import Control.Monad.Trans
 import Network.HTTP.Types.URI
+import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 
+import qualified Data.UUID as U
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 
@@ -36,13 +39,15 @@ time = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b) => PN -> (b -> IO ()) -> IO ()
-subscribe pn fn = do
+subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO ()
+subscribe pn uuid fn = do
   req <- buildRequest pn [ "subscribe"
                          , (sub_key pn)
                          , (channel pn)
                          , bsFromInteger $ jsonp_callback pn
-                         , head . L.toChunks $ encode (time_token pn)] []
+                         , head . L.toChunks $ encode (time_token pn)] (case uuid of
+                                                                           Just u -> [("uuid", u)]
+                                                                           Nothing -> [])
   withManager $ \manager -> do
     eres <- try $ httpLbs req manager
     case eres of
@@ -50,11 +55,11 @@ subscribe pn fn = do
         case decode $ responseBody r of
           Just (SubscribeResponse (resp, t)) -> do
             _ <- lift $ mapM fn resp
-            lift $ subscribe (pn { time_token=t }) fn
+            lift $ subscribe (pn { time_token=t }) uuid fn
           Nothing -> do
-            lift $ subscribe pn fn
+            lift $ subscribe pn uuid fn
       Left (ResponseTimeout :: HttpException) -> do
-        lift $ subscribe pn fn
+        lift $ subscribe pn uuid fn
       Left _ ->
         return ()
 
@@ -81,9 +86,9 @@ hereNow pn = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-presence :: PN -> IO (Maybe Presence)
-presence pn = do
-  return Nothing
+presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO ()
+presence pn uuid fn = do
+  subscribe (pn { channel=(B.concat [(channel pn), "-pnpres"]) }) (Just uuid) (fn)
 
 history :: FromJSON b => PN -> HistoryOptions -> IO (Maybe (History b))
 history pn options = do
@@ -96,13 +101,22 @@ history pn options = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-leave :: PN -> IO ()
-leave pn = do
+leave :: PN -> UUID -> IO ()
+leave pn uid = do
+  req <- buildRequest pn [ "v2"
+                         , "presence"
+                         , "sub-key"
+                         , (sub_key pn)
+                         , "channel"
+                         , (channel pn)
+                         , "leave"] [("uuid", uid)]
+  res <- withManager $ httpLbs req
   return ()
 
-getUuid :: PN -> IO (Maybe UUID)
-getUuid pn = do
-  return Nothing
+
+getUuid :: IO B.ByteString
+getUuid =
+  B.pack <$> U.toString <$> nextRandom
 
 unsubscribe :: PN -> IO ()
 unsubscribe pn = do
