@@ -45,18 +45,20 @@ runClient :: Client -> IO ()
 runClient Client{..} = do
   a <- presenceRun
   b <- receiver
-  withAsync cli $ \c -> do
+  withAsync (cli a b) $ \c -> do
     _ <- waitAnyCancel [a, b, c]
     return ()
   where
     presenceRun = do
       presence pn clientName (outputPresence)
 
-    cli = forever $ do
+    cli a b = forever $ do
       msg <- B.getLine
       case msg of
         "/leave" -> do
           leave pn clientName
+          unsubscribe a
+          unsubscribe b
           mzero
         _ ->
           publish pn (Msg { username=clientName

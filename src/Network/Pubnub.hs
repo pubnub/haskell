@@ -42,9 +42,9 @@ time = do
 
 subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
 subscribe pn uid fn =
-  async (subscribe' pn uid fn)
+  async (subscribe' pn)
   where
-    subscribe' pn uid fn= do
+    subscribe' pn' = do
       req <- buildRequest pn [ "subscribe"
                              , (sub_key pn)
                              , (channel pn)
@@ -59,11 +59,11 @@ subscribe pn uid fn =
             case decode $ responseBody r of
               Just (SubscribeResponse (resp, t)) -> do
                 _ <- lift $ mapM fn resp
-                lift $ subscribe' (pn { time_token=t }) uid fn
+                lift $ subscribe' (pn' { time_token=t })
               Nothing ->
-                lift $ subscribe' pn uid fn
+                lift $ subscribe' pn'
           Left (ResponseTimeout :: HttpException) ->
-            lift $ subscribe' pn uid fn
+            lift $ subscribe' pn'
           Left _ ->
             return ()
 
@@ -121,9 +121,8 @@ getUuid :: IO B.ByteString
 getUuid =
   B.pack . U.toString <$> nextRandom
 
-unsubscribe :: PN -> IO ()
-unsubscribe _ = do
-  return ()
+unsubscribe :: Async () -> IO ()
+unsubscribe = cancel
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> IO Request
 buildRequest pn elems qs = do
