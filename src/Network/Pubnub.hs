@@ -26,6 +26,7 @@ import Data.UUID.V4
 import Network.HTTP.Conduit
 import Control.Monad.Trans
 import Network.HTTP.Types.URI
+import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 
@@ -39,29 +40,32 @@ time = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO ()
-subscribe pn uid fn = do
-  req <- buildRequest pn [ "subscribe"
-                         , (sub_key pn)
-                         , (channel pn)
-                         , bsFromInteger $ jsonp_callback pn
-                         , head . L.toChunks $ encode (time_token pn)] (case uid of
-                                                                           Just u -> [("uuid", u)]
-                                                                           Nothing -> [])
-  withManager $ \manager -> do
-    eres <- try $ httpLbs req manager
-    case eres of
-      Right r -> do
-        case decode $ responseBody r of
-          Just (SubscribeResponse (resp, t)) -> do
-            _ <- lift $ mapM fn resp
-            lift $ subscribe (pn { time_token=t }) uid fn
-          Nothing -> do
-            lift $ subscribe pn uid fn
-      Left (ResponseTimeout :: HttpException) -> do
-        lift $ subscribe pn uid fn
-      Left _ ->
-        return ()
+subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
+subscribe pn uid fn =
+  async (subscribe' pn uid fn)
+  where
+    subscribe' pn uid fn= do
+      req <- buildRequest pn [ "subscribe"
+                             , (sub_key pn)
+                             , (channel pn)
+                             , bsFromInteger $ jsonp_callback pn
+                             , head . L.toChunks $ encode (time_token pn)] (case uid of
+                                                                               Just u -> [("uuid", u)]
+                                                                               Nothing -> [])
+      withManager $ \manager -> do
+        eres <- try $ httpLbs req manager
+        case eres of
+          Right r ->
+            case decode $ responseBody r of
+              Just (SubscribeResponse (resp, t)) -> do
+                _ <- lift $ mapM fn resp
+                lift $ subscribe' (pn { time_token=t }) uid fn
+              Nothing ->
+                lift $ subscribe' pn uid fn
+          Left (ResponseTimeout :: HttpException) ->
+            lift $ subscribe' pn uid fn
+          Left _ ->
+            return ()
 
 publish :: ToJSON a => PN -> a -> IO (Maybe PublishResponse)
 publish pn msg = do
@@ -86,7 +90,7 @@ hereNow pn = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO ()
+presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
 presence pn uid fn = do
   subscribe (pn { channel=(B.concat [(channel pn), "-pnpres"]) }) (Just uid) (fn)
 

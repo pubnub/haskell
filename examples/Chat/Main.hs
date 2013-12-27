@@ -42,12 +42,12 @@ newClient name = Client { clientName = name
                                          , pub_key="demo" }}
 
 runClient :: Client -> IO ()
-runClient Client{..} =
-  withAsync presenceRun $ \a ->
-    withAsync cli $ \b ->
-      withAsync receiver $ \c -> do
-        _ <- waitAnyCancel [a, b, c]
-        return ()
+runClient Client{..} = do
+  a <- presenceRun
+  b <- receiver
+  withAsync cli $ \c -> do
+    _ <- waitAnyCancel [a, b, c]
+    return ()
   where
     presenceRun = do
       presence pn clientName (outputPresence)

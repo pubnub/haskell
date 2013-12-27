@@ -17,15 +17,14 @@ module Network.Pubnub.Types
        , Action(..)
        , HereNow(..)
        , History(..)
-       , HistoryOptions(..)
        , HistoryOption(..)
+       , HistoryOptions
        ) where
 
 import GHC.Generics
 
 import Control.Applicative ((<$>), pure, empty)
 import Data.Text.Read
-
 import Data.Aeson
 import Data.Aeson.TH
 
