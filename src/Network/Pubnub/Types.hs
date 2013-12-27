@@ -111,7 +111,7 @@ type HistoryOptions = [HistoryOption]
 
 convertHistoryOptions :: HistoryOptions -> [(B.ByteString, B.ByteString)]
 convertHistoryOptions =
-  map (convertHistoryOption)
+  map convertHistoryOption
 
 convertHistoryOption :: HistoryOption -> (B.ByteString, B.ByteString)
 convertHistoryOption (Start i)       = ("start", B.pack $ show i)
@@ -126,12 +126,10 @@ decimalRight x =
     Right (i, "") -> i
     _             -> 0
 
-$(deriveJSON defaultOptions{ fieldLabelModifier=(\x -> case x of
+$(deriveJSON defaultOptions{ fieldLabelModifier= \ x -> case x of
                                                     "presenceOccupancy" -> "occupancy"
-                                                    _ -> x
-                                                    ) } ''Presence)
+                                                    _ -> x } ''Presence)
 
-$(deriveJSON defaultOptions{ fieldLabelModifier=(\x -> case x of
+$(deriveJSON defaultOptions{ fieldLabelModifier= \ x -> case x of
                                                     "herenowOccupancy" -> "occupancy"
-                                                    _ -> x
-                                                    ) } ''HereNow)
+                                                    _ -> x } ''HereNow)

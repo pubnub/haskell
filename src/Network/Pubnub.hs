@@ -36,20 +36,20 @@ import qualified Data.ByteString.Lazy as L
 
 time :: IO (Maybe Timestamp)
 time = do
-  req <- buildRequest (defaultPN) ["time", "0"] []
+  req <- buildRequest defaultPN ["time", "0"] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
+subscribe :: (FromJSON b, Show b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
 subscribe pn uid fn =
   async (subscribe' pn)
   where
     subscribe' pn' = do
-      req <- buildRequest pn [ "subscribe"
-                             , (sub_key pn)
-                             , (channel pn)
-                             , bsFromInteger $ jsonp_callback pn
-                             , head . L.toChunks $ encode (time_token pn)] (case uid of
+      req <- buildRequest pn' [ "subscribe"
+                              , sub_key pn'
+                              , channel pn'
+                              , bsFromInteger $ jsonp_callback pn'
+                              , head . L.toChunks $ encode (time_token pn')] (case uid of
                                                                                Just u -> [("uuid", u)]
                                                                                Nothing -> [])
       withManager $ \manager -> do
@@ -69,11 +69,11 @@ subscribe pn uid fn =
 
 publish :: ToJSON a => PN -> a -> IO (Maybe PublishResponse)
 publish pn msg = do
-  req <- buildRequest pn ["publish"
-                         , (pub_key pn)
-                         , (sub_key pn)
-                         , (sec_key pn)
-                         , (channel pn)
+  req <- buildRequest pn [ "publish"
+                         , pub_key pn
+                         , sub_key pn
+                         , sec_key pn
+                         , channel pn
                          , bsFromInteger $ jsonp_callback pn
                          , head . L.toChunks $ encode msg] []
   res <- withManager $ httpLbs req
@@ -84,24 +84,24 @@ hereNow pn = do
   req <- buildRequest pn [ "v2"
                          , "presence"
                          , "sub-key"
-                         , (sub_key pn)
+                         , sub_key pn
                          , "channel"
-                         , (channel pn)] []
+                         , channel pn] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
-presence pn uid fn = do
-  subscribe (pn { channel=(B.concat [(channel pn), "-pnpres"]) }) (Just uid) (fn)
+presence :: (FromJSON b, Show b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
+presence pn uid =
+  subscribe (pn { channel=B.concat [channel pn, "-pnpres"] }) (Just uid)
 
 history :: FromJSON b => PN -> HistoryOptions -> IO (Maybe (History b))
 history pn options = do
   req <- buildRequest pn [ "v2"
                          , "history"
                          , "sub-key"
-                         , (sub_key pn)
+                         , sub_key pn
                          , "channel"
-                         , (channel pn)] (convertHistoryOptions options)
+                         , channel pn] (convertHistoryOptions options)
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -110,9 +110,9 @@ leave pn uid = do
   req <- buildRequest pn [ "v2"
                          , "presence"
                          , "sub-key"
-                         , (sub_key pn)
+                         , sub_key pn
                          , "channel"
-                         , (channel pn)
+                         , channel pn
                          , "leave"] [("uuid", uid)]
   _ <- withManager $ httpLbs req
   return ()
@@ -127,7 +127,7 @@ unsubscribe = cancel
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> IO Request
 buildRequest pn elems qs = do
   req <- parseUrl "http://"
-  return req { host           = (origin pn)
+  return req { host           = origin pn
              , path           = B.intercalate "/" elems
              , method         = "GET"
              , secure         = False

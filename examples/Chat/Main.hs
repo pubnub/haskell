@@ -49,8 +49,8 @@ runClient Client{..} = do
     _ <- waitAnyCancel [a, b, c]
     return ()
   where
-    presenceRun = do
-      presence pn clientName (outputPresence)
+    presenceRun =
+      presence pn clientName outputPresence
 
     cli a b = forever $ do
       msg <- B.getLine
@@ -61,11 +61,11 @@ runClient Client{..} = do
           unsubscribe b
           mzero
         _ ->
-          publish pn (Msg { username=clientName
-                          , msg=msg })
+          publish pn Msg { username=clientName
+                         , msg=msg }
 
-    receiver = do
-      subscribe pn (Just clientName) (output)
+    receiver =
+      subscribe pn (Just clientName) output
 
 outputPresence :: Maybe Presence -> IO ()
 outputPresence (Just Presence{..}) = do
@@ -81,7 +81,8 @@ outputPresence (Just Presence{..}) = do
 outputPresence _ = return ()
 
 output :: Maybe Msg -> IO ()
-output (Just m) = B.putStrLn $ B.concat ["<", (username m), "> : ", (msg m)]
+output (Just m) =
+  B.putStrLn $ B.concat ["<", username m, "> : ", msg m]
 output Nothing = return ()
 
 encodeMsg :: Msg -> L.ByteString
