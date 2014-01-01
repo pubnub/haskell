@@ -58,6 +58,7 @@ executable chat
                         , bytestring >= 0.10.0.2
                         , async >= 2.0.1.4
                         , pubnub >= 0.1.0.0
+                        , text >= 1.0.0.0
 
 executable test-pubnub-haskell
   hs-source-dirs:       test

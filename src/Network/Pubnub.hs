@@ -31,6 +31,8 @@ import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 
 import qualified Data.UUID as U
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as E
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 

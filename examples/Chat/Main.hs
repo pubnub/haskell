@@ -12,19 +12,21 @@ import Data.Aeson
 
 import Control.Concurrent.Async
 import Control.Monad
-
+import qualified Data.Text.IO as I
+import Data.Text.Encoding
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as L
 
-data Msg = Msg { username :: B.ByteString
-               , msg      :: B.ByteString }
+data Msg = Msg { username :: T.Text
+               , msg      :: T.Text }
            deriving (Show, Generic)
 
 instance ToJSON Msg
 
 instance FromJSON Msg
 
-type ClientName = B.ByteString
+type ClientName = T.Text
 
 data Client = Client { clientName :: ClientName
                      , pn         :: PN }
@@ -32,7 +34,7 @@ data Client = Client { clientName :: ClientName
 main :: IO ()
 main = do
   putStrLn "Enter Username: "
-  username <- B.getLine
+  username <- I.getLine
   runClient $ newClient username
 
 newClient :: ClientName -> Client
@@ -50,13 +52,13 @@ runClient Client{..} = do
     return ()
   where
     presenceRun =
-      presence pn clientName outputPresence
+      presence pn (encodeUtf8 clientName) outputPresence
 
     cli a b = forever $ do
-      msg <- B.getLine
+      msg <- I.getLine
       case msg of
         "/leave" -> do
-          leave pn clientName
+          leave pn (encodeUtf8 clientName)
           unsubscribe a
           unsubscribe b
           mzero
@@ -65,7 +67,7 @@ runClient Client{..} = do
                          , msg=msg }
 
     receiver =
-      subscribe pn (Just clientName) output
+      subscribe pn (Just (encodeUtf8 clientName)) output
 
 outputPresence :: Maybe Presence -> IO ()
 outputPresence (Just Presence{..}) = do
@@ -82,7 +84,7 @@ outputPresence _ = return ()
 
 output :: Maybe Msg -> IO ()
 output (Just m) =
-  B.putStrLn $ B.concat ["<", username m, "> : ", msg m]
+  I.putStrLn $ T.concat ["<", username m, "> : ", msg m]
 output Nothing = return ()
 
 encodeMsg :: Msg -> L.ByteString
