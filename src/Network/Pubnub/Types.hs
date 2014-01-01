@@ -41,7 +41,7 @@ data PN = PN { origin         :: B.ByteString
              , time_token     :: Timestamp }
 
 defaultPN :: PN
-defaultPN = PN { origin         = "pubsub.pubnub.com"
+defaultPN = PN { origin         = "haskell.pubnub.com"
                , pub_key        = B.empty
                , sub_key        = B.empty
                , sec_key        = "0"
