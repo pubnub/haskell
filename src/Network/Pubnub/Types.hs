@@ -36,7 +36,7 @@ data PN = PN { origin         :: B.ByteString
              , pub_key        :: B.ByteString
              , sub_key        :: B.ByteString
              , sec_key        :: B.ByteString
-             , channel        :: B.ByteString
+             , channels       :: [B.ByteString]
              , jsonp_callback :: Integer
              , time_token     :: Timestamp }
 
@@ -45,7 +45,7 @@ defaultPN = PN { origin         = "pubsub.pubnub.com"
                , pub_key        = B.empty
                , sub_key        = B.empty
                , sec_key        = "0"
-               , channel        = B.empty
+               , channels       = []
                , jsonp_callback = 0
                , time_token     = Timestamp 0 }
 

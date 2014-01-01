@@ -31,8 +31,6 @@ import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 
 import qualified Data.UUID as U
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as E
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 
@@ -49,7 +47,7 @@ subscribe pn uid fn =
     subscribe' pn' = do
       req <- buildRequest pn' [ "subscribe"
                               , sub_key pn'
-                              , channel pn'
+                              , B.intercalate "," (channels pn')
                               , bsFromInteger $ jsonp_callback pn'
                               , head . L.toChunks $ encode (time_token pn')] (case uid of
                                                                                Just u -> [("uuid", u)]
@@ -69,52 +67,55 @@ subscribe pn uid fn =
           Left _ ->
             return ()
 
-publish :: ToJSON a => PN -> a -> IO (Maybe PublishResponse)
-publish pn msg = do
+publish :: ToJSON a => PN -> B.ByteString -> a -> IO (Maybe PublishResponse)
+publish pn channel msg = do
   req <- buildRequest pn [ "publish"
                          , pub_key pn
                          , sub_key pn
                          , sec_key pn
-                         , channel pn
+                         , channel
                          , bsFromInteger $ jsonp_callback pn
                          , head . L.toChunks $ encode msg] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-hereNow :: PN -> IO (Maybe HereNow)
-hereNow pn = do
+hereNow :: PN -> B.ByteString -> IO (Maybe HereNow)
+hereNow pn channel = do
   req <- buildRequest pn [ "v2"
                          , "presence"
                          , "sub-key"
                          , sub_key pn
                          , "channel"
-                         , channel pn] []
+                         , channel] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
 presence :: (FromJSON b, Show b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
 presence pn uid =
-  subscribe (pn { channel=B.concat [channel pn, "-pnpres"] }) (Just uid)
+  subscribe (pn { channels=presence_channels }) (Just uid)
+  where
+    presence_channels = map (prepend "-pnpres") (channels pn)
+    prepend = flip B.append
 
-history :: FromJSON b => PN -> HistoryOptions -> IO (Maybe (History b))
-history pn options = do
+history :: FromJSON b => PN -> B.ByteString -> HistoryOptions -> IO (Maybe (History b))
+history pn channel options = do
   req <- buildRequest pn [ "v2"
                          , "history"
                          , "sub-key"
                          , sub_key pn
                          , "channel"
-                         , channel pn] (convertHistoryOptions options)
+                         , channel] (convertHistoryOptions options)
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-leave :: PN -> UUID -> IO ()
-leave pn uid = do
+leave :: PN -> B.ByteString -> UUID -> IO ()
+leave pn channel uid = do
   req <- buildRequest pn [ "v2"
                          , "presence"
                          , "sub-key"
                          , sub_key pn
                          , "channel"
-                         , channel pn
+                         , channel
                          , "leave"] [("uuid", uid)]
   _ <- withManager $ httpLbs req
   return ()

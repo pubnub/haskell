@@ -39,9 +39,9 @@ main = do
 
 newClient :: ClientName -> Client
 newClient name = Client { clientName = name
-                        , pn = defaultPN { channel="testchathaskell2"
-                                         , sub_key="demo"
-                                         , pub_key="demo" }}
+                        , pn = defaultPN { channels = ["testchathaskell2"]
+                                         , sub_key  = "demo"
+                                         , pub_key  = "demo" }}
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
@@ -58,13 +58,13 @@ runClient Client{..} = do
       msg <- I.getLine
       case msg of
         "/leave" -> do
-          leave pn (encodeUtf8 clientName)
+          leave pn (head $ channels pn) (encodeUtf8 clientName)
           unsubscribe a
           unsubscribe b
           mzero
         _ ->
-          publish pn Msg { username=clientName
-                         , msg=msg }
+          publish pn (head $ channels pn) Msg { username=clientName
+                                              , msg=msg }
 
     receiver =
       subscribe pn (Just (encodeUtf8 clientName)) output
