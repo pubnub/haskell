@@ -30,6 +30,7 @@ import Network.HTTP.Types.URI
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
+import Data.Digest.Pure.SHA
 
 import qualified Data.UUID as U
 import qualified Data.ByteString.Char8 as B
@@ -70,15 +71,20 @@ subscribe pn uid fn =
 
 publish :: ToJSON a => PN -> B.ByteString -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
+  let encoded_msg = head . L.toChunks $ encode msg
+  let sig = signature (sec_key pn) encoded_msg
   let req = buildRequest pn [ "publish"
                             , pub_key pn
                             , sub_key pn
-                            , sec_key pn
+                            , sig
                             , channel
                             , bsFromInteger $ jsonp_callback pn
-                            , head . L.toChunks $ encode msg] []
+                            , encoded_msg] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
+  where
+    signature "0"    _ = "0"
+    signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict secret) (L.fromStrict m)
 
 hereNow :: PN -> B.ByteString -> IO (Maybe HereNow)
 hereNow pn channel = do
