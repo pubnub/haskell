@@ -39,9 +39,9 @@ main = do
 
 newClient :: ClientName -> Client
 newClient name = Client { clientName = name
-                        , pn = defaultPN { channels = ["testchathaskell2"]
-                                         , sub_key  = "demo"
-                                         , pub_key  = "demo" }}
+                        , pn = setEncryptionKey (defaultPN { channels = ["testchathaskell2"]
+                                                           , sub_key  = "demo"
+                                                           , pub_key  = "demo" }) "enigma" }
 
 runClient :: Client -> IO ()
 runClient Client{..} = do

@@ -11,6 +11,7 @@ module Network.Pubnub.Types
        , PN(..)
        , defaultPN
        , SubscribeResponse(..)
+       , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
        , UUID
        , Presence(..)
@@ -91,6 +92,11 @@ data SubscribeResponse a = SubscribeResponse (a, Timestamp)
                          deriving (Show, Generic)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
+
+data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([B.ByteString], Timestamp)
+                         deriving (Show, Generic)
+
+instance FromJSON EncryptedSubscribeResponse
 
 type UUID = B.ByteString
 type Occupancy = Integer

@@ -31,6 +31,8 @@ import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 
+import Data.Maybe
+
 import Data.Digest.Pure.SHA
 import Crypto.Cipher.AES
 import Crypto.Padding
@@ -62,16 +64,37 @@ subscribe pn uid fn =
         eres <- try $ httpLbs req manager
         case eres of
           Right r ->
-            case decode $ responseBody r of
-              Just (SubscribeResponse (resp, t)) -> do
-                _ <- lift $ mapM fn resp
-                lift $ subscribe' (pn' { time_token=t })
-              Nothing ->
-                lift $ subscribe' pn'
+            case (ctx pn', iv pn') of
+              (Nothing, _) ->
+                case decode $ responseBody r of
+                  Just (SubscribeResponse (resp, t)) -> do
+                    lift $ mapM (fn) resp
+                    lift $ subscribe' (pn' { time_token=t })
+                  Nothing ->
+                    lift $ subscribe' pn'
+              (Just c, Just i) ->
+                case decode $ responseBody r of
+                  Just (EncryptedSubscribeResponse (resp, t)) -> do
+                    lift $ mapM (\x -> fn $ decodeEncrypted c i x) resp
+                    lift $ subscribe' (pn' { time_token=t })
+                  Nothing ->
+                    lift $ subscribe' pn'
           Left (ResponseTimeout :: HttpException) ->
             lift $ subscribe' pn'
           Left _ ->
             return ()
+
+    decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
+
+    decodeUnencrypted :: (FromJSON b) => B.ByteString -> b
+    decodeUnencrypted m = fromJust $ decode $ (L.fromStrict m)
+
+    decrypt c i m = unpadPKCS5 $ decryptCBC c i $ B64.decodeLenient $ decodeJson m
+
+    decodeJson :: B.ByteString -> B.ByteString
+    decodeJson s = case decode (L.fromStrict s) of
+                       Nothing -> s
+                       Just l -> L.toStrict l
 
 publish :: ToJSON a => PN -> B.ByteString -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
@@ -109,7 +132,7 @@ hereNow pn channel = do
 
 presence :: (FromJSON b, Show b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
 presence pn uid =
-  subscribe (pn { channels=presence_channels }) (Just uid)
+  subscribe (pn { ctx=Nothing, channels=presence_channels }) (Just uid)
   where
     presence_channels = map (prepend "-pnpres") (channels pn)
     prepend = flip B.append
