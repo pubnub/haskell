@@ -19,6 +19,7 @@ module Network.Pubnub.Types
        , History(..)
        , HistoryOption(..)
        , HistoryOptions
+       , setEncryptionKey
        ) where
 
 import GHC.Generics
@@ -28,9 +29,14 @@ import Data.Text.Read
 import Data.Aeson
 import Data.Aeson.TH
 
+import Crypto.Cipher.AES
+import Crypto.Cipher.Types
+import Data.Digest.Pure.SHA
+
 import qualified Data.Vector as V
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as L
 
 data PN = PN { origin         :: B.ByteString
              , pub_key        :: B.ByteString
@@ -38,7 +44,10 @@ data PN = PN { origin         :: B.ByteString
              , sec_key        :: B.ByteString
              , channels       :: [B.ByteString]
              , jsonp_callback :: Integer
-             , time_token     :: Timestamp }
+             , time_token     :: Timestamp
+             , cipher_key     :: B.ByteString
+             , ctx            :: Maybe AES
+             , iv             :: Maybe (IV AES) }
 
 defaultPN :: PN
 defaultPN = PN { origin         = "haskell.pubnub.com"
@@ -47,7 +56,19 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , sec_key        = "0"
                , channels       = []
                , jsonp_callback = 0
-               , time_token     = Timestamp 0 }
+               , time_token     = Timestamp 0
+               , cipher_key     = B.empty
+               , ctx            = Nothing
+               , iv             = makeIV (B.pack "0123456789012345") }
+
+setEncryptionKey :: PN -> B.ByteString -> PN
+setEncryptionKey pn key =
+  pn{ctx = Just (initAES128 $ convertKey key)}
+  where
+    initAES128 :: B.ByteString -> AES
+    initAES128 = either (error . show) cipherInit . makeKey
+
+    convertKey k = B.pack . take 32 . showDigest . sha256 $ L.fromStrict k
 
 newtype Timestamp = Timestamp Integer
                   deriving (Show)

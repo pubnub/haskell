@@ -30,11 +30,15 @@ import Network.HTTP.Types.URI
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
+
 import Data.Digest.Pure.SHA
+import Crypto.Cipher.AES
+import Crypto.Padding
 
 import qualified Data.UUID as U
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Base64 as B64
 
 time :: IO (Maybe Timestamp)
 time = do
@@ -79,12 +83,18 @@ publish pn channel msg = do
                             , sig
                             , channel
                             , bsFromInteger $ jsonp_callback pn
-                            , encoded_msg] []
+                            , encrypt (ctx pn) (iv pn) encoded_msg] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
   where
     signature "0"    _ = "0"
     signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict secret) (L.fromStrict m)
+
+    encrypt (Just c) (Just i) m = encodeJson $ B64.encode $ encryptCBC c i (padPKCS5 16 m)
+    encrypt Nothing     _     m = m
+    encrypt   _       Nothing m = m
+
+    encodeJson s = L.toStrict $ encode s
 
 hereNow :: PN -> B.ByteString -> IO (Maybe HereNow)
 hereNow pn channel = do

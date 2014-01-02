@@ -36,6 +36,10 @@ library
                         , async >= 2.0.1.4
                         , data-default
                         , SHA >= 1.6.1
+                        , cipher-aes >= 0.2.6
+                        , crypto-api >= 0.12.2.2
+                        , crypto-cipher-types >= 0.0.9
+                        , base64-bytestring >= 1.0.0.1
   ghc-options:          -Wall
   hs-source-dirs:       src
   default-language:     Haskell2010
