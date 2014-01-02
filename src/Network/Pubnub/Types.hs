@@ -57,7 +57,8 @@ instance ToJSON Timestamp where
 
 instance FromJSON Timestamp where
   parseJSON (String s) = Timestamp <$> (pure . decimalRight) s
-  parseJSON (Array a)  = Timestamp <$> (withNumber "Integral" $ pure . floor) (a V.! 0)
+  parseJSON (Array a)  =
+    Timestamp <$> (withNumber "Integral" $ pure . floor) (V.head a)
   parseJSON _          = empty
 
 data PublishResponse = PublishResponse Integer String Timestamp
@@ -121,10 +122,7 @@ convertHistoryOption (Reverse False) = ("reverse", "false")
 convertHistoryOption (Count i)       = ("count", B.pack $ show i)
 
 decimalRight :: T.Text -> Integer
-decimalRight x =
-  case decimal x of
-    Right (i, "") -> i
-    _             -> 0
+decimalRight = either (const 0) fst . decimal
 
 $(deriveJSON defaultOptions{ fieldLabelModifier= \ x -> case x of
                                                     "presenceOccupancy" -> "occupancy"

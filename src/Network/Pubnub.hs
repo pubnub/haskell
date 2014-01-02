@@ -21,6 +21,7 @@ module Network.Pubnub
 
 import Network.Pubnub.Types
 
+import Data.Default (def)
 import Data.Aeson
 import Data.UUID.V4
 import Network.HTTP.Conduit
@@ -36,7 +37,7 @@ import qualified Data.ByteString.Lazy as L
 
 time :: IO (Maybe Timestamp)
 time = do
-  req <- buildRequest defaultPN ["time", "0"] []
+  let req = buildRequest defaultPN ["time", "0"] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
@@ -45,13 +46,13 @@ subscribe pn uid fn =
   async (subscribe' pn)
   where
     subscribe' pn' = do
-      req <- buildRequest pn' [ "subscribe"
-                              , sub_key pn'
-                              , B.intercalate "," (channels pn')
-                              , bsFromInteger $ jsonp_callback pn'
-                              , head . L.toChunks $ encode (time_token pn')] (case uid of
-                                                                               Just u -> [("uuid", u)]
-                                                                               Nothing -> [])
+      let req = buildRequest pn' [ "subscribe"
+                                 , sub_key pn'
+                                 , B.intercalate "," (channels pn')
+                                 , bsFromInteger $ jsonp_callback pn'
+                                 , head . L.toChunks $ encode (time_token pn')] (case uid of
+                                                                                    Just u -> [("uuid", u)]
+                                                                                    Nothing -> [])
       withManager $ \manager -> do
         eres <- try $ httpLbs req manager
         case eres of
@@ -69,24 +70,24 @@ subscribe pn uid fn =
 
 publish :: ToJSON a => PN -> B.ByteString -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
-  req <- buildRequest pn [ "publish"
-                         , pub_key pn
-                         , sub_key pn
-                         , sec_key pn
-                         , channel
-                         , bsFromInteger $ jsonp_callback pn
-                         , head . L.toChunks $ encode msg] []
+  let req = buildRequest pn [ "publish"
+                            , pub_key pn
+                            , sub_key pn
+                            , sec_key pn
+                            , channel
+                            , bsFromInteger $ jsonp_callback pn
+                            , head . L.toChunks $ encode msg] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
 hereNow :: PN -> B.ByteString -> IO (Maybe HereNow)
 hereNow pn channel = do
-  req <- buildRequest pn [ "v2"
-                         , "presence"
-                         , "sub-key"
-                         , sub_key pn
-                         , "channel"
-                         , channel] []
+  let req = buildRequest pn [ "v2"
+                            , "presence"
+                            , "sub-key"
+                            , sub_key pn
+                            , "channel"
+                            , channel] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -99,24 +100,24 @@ presence pn uid =
 
 history :: FromJSON b => PN -> B.ByteString -> HistoryOptions -> IO (Maybe (History b))
 history pn channel options = do
-  req <- buildRequest pn [ "v2"
-                         , "history"
-                         , "sub-key"
-                         , sub_key pn
-                         , "channel"
-                         , channel] (convertHistoryOptions options)
+  let req = buildRequest pn [ "v2"
+                            , "history"
+                            , "sub-key"
+                            , sub_key pn
+                            , "channel"
+                            , channel] (convertHistoryOptions options)
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
 leave :: PN -> B.ByteString -> UUID -> IO ()
 leave pn channel uid = do
-  req <- buildRequest pn [ "v2"
-                         , "presence"
-                         , "sub-key"
-                         , sub_key pn
-                         , "channel"
-                         , channel
-                         , "leave"] [("uuid", uid)]
+  let req = buildRequest pn [ "v2"
+                            , "presence"
+                            , "sub-key"
+                            , sub_key pn
+                            , "channel"
+                            , channel
+                            , "leave"] [("uuid", uid)]
   _ <- withManager $ httpLbs req
   return ()
 
@@ -127,16 +128,17 @@ getUuid =
 unsubscribe :: Async () -> IO ()
 unsubscribe = cancel
 
-buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> IO Request
+buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Request
 buildRequest pn elems qs = do
-  req <- parseUrl "http://"
-  return req { host           = origin pn
-             , path           = B.intercalate "/" elems
-             , method         = "GET"
-             , secure         = False
-             , port           = 80
-             , requestHeaders = [("V", "3.1"), ("User-Agent", "Haskell"), ("Accept", "*/*")]
-             , queryString    = renderSimpleQuery True qs }
+  def { host           = origin pn
+      , path           = B.intercalate "/" elems
+      , method         = "GET"
+      , secure         = False
+      , port           = 80
+      , requestHeaders = [ ("V", "3.1")
+                         , ("User-Agent", "Haskell")
+                         , ("Accept", "*/*")]
+      , queryString    = renderSimpleQuery True qs }
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
