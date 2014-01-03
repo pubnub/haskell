@@ -68,14 +68,14 @@ subscribe pn uid fn =
               (Nothing, _) ->
                 case decode $ responseBody r of
                   Just (SubscribeResponse (resp, t)) -> do
-                    lift $ mapM (fn) resp
+                    lift $ mapM fn resp
                     lift $ subscribe' (pn' { time_token=t })
                   Nothing ->
                     lift $ subscribe' pn'
               (Just c, Just i) ->
                 case decode $ responseBody r of
                   Just (EncryptedSubscribeResponse (resp, t)) -> do
-                    lift $ mapM (\x -> fn $ decodeEncrypted c i x) resp
+                    lift $ mapM (fn . decodeEncrypted c i) resp
                     lift $ subscribe' (pn' { time_token=t })
                   Nothing ->
                     lift $ subscribe' pn'
@@ -87,7 +87,7 @@ subscribe pn uid fn =
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
 
     decodeUnencrypted :: (FromJSON b) => B.ByteString -> b
-    decodeUnencrypted m = fromJust $ decode $ (L.fromStrict m)
+    decodeUnencrypted m = fromJust $ decode $ L.fromStrict m
 
     decrypt c i m = unpadPKCS5 $ decryptCBC c i $ B64.decodeLenient $ decodeJson m
 
