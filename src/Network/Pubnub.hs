@@ -65,17 +65,17 @@ subscribe pn uid fn =
         case eres of
           Right r ->
             case (ctx pn', iv pn') of
-              (Nothing, _) ->
-                case decode $ responseBody r of
-                  Just (SubscribeResponse (resp, t)) -> do
-                    lift $ mapM fn resp
-                    lift $ subscribe' (pn' { time_token=t })
-                  Nothing ->
-                    lift $ subscribe' pn'
               (Just c, Just i) ->
                 case decode $ responseBody r of
                   Just (EncryptedSubscribeResponse (resp, t)) -> do
-                    lift $ mapM (fn . decodeEncrypted c i) resp
+                    _ <- lift $ mapM (fn . decodeEncrypted c i) resp
+                    lift $ subscribe' (pn' { time_token=t })
+                  Nothing ->
+                    lift $ subscribe' pn'
+              (_, _) ->
+                case decode $ responseBody r of
+                  Just (SubscribeResponse (resp, t)) -> do
+                    _ <- lift $ mapM fn resp
                     lift $ subscribe' (pn' { time_token=t })
                   Nothing ->
                     lift $ subscribe' pn'
@@ -168,7 +168,7 @@ unsubscribe :: Async () -> IO ()
 unsubscribe = cancel
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Request
-buildRequest pn elems qs = do
+buildRequest pn elems qs =
   def { host           = origin pn
       , path           = B.intercalate "/" elems
       , method         = "GET"
