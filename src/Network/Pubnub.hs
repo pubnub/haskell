@@ -172,12 +172,12 @@ buildRequest pn elems qs =
   def { host           = origin pn
       , path           = B.intercalate "/" elems
       , method         = "GET"
-      , secure         = False
-      , port           = 80
+      , port           = if (ssl pn) then 443 else 80
       , requestHeaders = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString    = renderSimpleQuery True qs }
+      , queryString    = renderSimpleQuery True qs
+      , secure         = ssl pn }
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show

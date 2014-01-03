@@ -48,7 +48,8 @@ data PN = PN { origin         :: B.ByteString
              , time_token     :: Timestamp
              , cipher_key     :: B.ByteString
              , ctx            :: Maybe AES
-             , iv             :: Maybe (IV AES) }
+             , iv             :: Maybe (IV AES)
+             , ssl            :: Bool}
 
 defaultPN :: PN
 defaultPN = PN { origin         = "haskell.pubnub.com"
@@ -60,7 +61,8 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , time_token     = Timestamp 0
                , cipher_key     = B.empty
                , ctx            = Nothing
-               , iv             = makeIV (B.pack "0123456789012345") }
+               , iv             = makeIV (B.pack "0123456789012345")
+               , ssl            = False }
 
 setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =
