@@ -30,13 +30,14 @@ import Network.HTTP.Types.URI
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
-
+import Data.Text.Encoding
 import Data.Maybe
 
 import Data.Digest.Pure.SHA
 import Crypto.Cipher.AES
 import Crypto.Padding
 
+import qualified Data.Text as T
 import qualified Data.UUID as U
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
@@ -54,11 +55,11 @@ subscribe pn uid fn =
   where
     subscribe' pn' = do
       let req = buildRequest pn' [ "subscribe"
-                                 , sub_key pn'
-                                 , B.intercalate "," (channels pn')
+                                 , encodeUtf8 $ sub_key pn'
+                                 , encodeUtf8 $ T.intercalate "," (channels pn')
                                  , bsFromInteger $ jsonp_callback pn'
                                  , head . L.toChunks $ encode (time_token pn')] (case uid of
-                                                                                    Just u -> [("uuid", u)]
+                                                                                    Just u -> [("uuid", encodeUtf8 u)]
                                                                                     Nothing -> [])
       withManager $ \manager -> do
         eres <- try $ httpLbs req manager
@@ -96,22 +97,22 @@ subscribe pn uid fn =
                        Nothing -> s
                        Just l -> L.toStrict l
 
-publish :: ToJSON a => PN -> B.ByteString -> a -> IO (Maybe PublishResponse)
+publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
   let encoded_msg = head . L.toChunks $ encode msg
   let sig = signature (sec_key pn) encoded_msg
   let req = buildRequest pn [ "publish"
-                            , pub_key pn
-                            , sub_key pn
+                            , encodeUtf8 $ pub_key pn
+                            , encodeUtf8 $ sub_key pn
                             , sig
-                            , channel
+                            , encodeUtf8 $ channel
                             , bsFromInteger $ jsonp_callback pn
                             , encrypt (ctx pn) (iv pn) encoded_msg] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
   where
     signature "0"    _ = "0"
-    signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict secret) (L.fromStrict m)
+    signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict $ encodeUtf8 secret) (L.fromStrict m)
 
     encrypt (Just c) (Just i) m = encodeJson $ B64.encode $ encryptCBC c i (padPKCS5 16 m)
     encrypt Nothing     _     m = m
@@ -119,14 +120,14 @@ publish pn channel msg = do
 
     encodeJson s = L.toStrict $ encode s
 
-hereNow :: PN -> B.ByteString -> IO (Maybe HereNow)
+hereNow :: PN -> T.Text -> IO (Maybe HereNow)
 hereNow pn channel = do
   let req = buildRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
-                            , sub_key pn
+                            , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , channel] []
+                            , encodeUtf8 $ channel] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -135,41 +136,41 @@ presence pn uid =
   subscribe (pn { ctx=Nothing, channels=presence_channels }) (Just uid)
   where
     presence_channels = map (prepend "-pnpres") (channels pn)
-    prepend = flip B.append
+    prepend = flip T.append
 
-history :: FromJSON b => PN -> B.ByteString -> HistoryOptions -> IO (Maybe (History b))
+history :: FromJSON b => PN -> T.Text -> HistoryOptions -> IO (Maybe (History b))
 history pn channel options = do
   let req = buildRequest pn [ "v2"
                             , "history"
                             , "sub-key"
-                            , sub_key pn
+                            , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , channel] (convertHistoryOptions options)
+                            , encodeUtf8 $ channel] (convertHistoryOptions options)
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-leave :: PN -> B.ByteString -> UUID -> IO ()
+leave :: PN -> T.Text -> UUID -> IO ()
 leave pn channel uid = do
   let req = buildRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
-                            , sub_key pn
+                            , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , channel
-                            , "leave"] [("uuid", uid)]
+                            , encodeUtf8 channel
+                            , "leave"] [("uuid", encodeUtf8 uid)]
   _ <- withManager $ httpLbs req
   return ()
 
-getUuid :: IO B.ByteString
+getUuid :: IO UUID
 getUuid =
-  B.pack . U.toString <$> nextRandom
+  T.pack . U.toString <$> nextRandom
 
 unsubscribe :: Async () -> IO ()
 unsubscribe = cancel
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Request
 buildRequest pn elems qs =
-  def { host           = origin pn
+  def { host           = encodeUtf8 $ origin pn
       , path           = B.intercalate "/" elems
       , method         = "GET"
       , port           = if (ssl pn) then 443 else 80

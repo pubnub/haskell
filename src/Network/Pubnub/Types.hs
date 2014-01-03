@@ -39,11 +39,11 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 
-data PN = PN { origin         :: B.ByteString
-             , pub_key        :: B.ByteString
-             , sub_key        :: B.ByteString
-             , sec_key        :: B.ByteString
-             , channels       :: [B.ByteString]
+data PN = PN { origin         :: T.Text
+             , pub_key        :: T.Text
+             , sub_key        :: T.Text
+             , sec_key        :: T.Text
+             , channels       :: [T.Text]
              , jsonp_callback :: Integer
              , time_token     :: Timestamp
              , cipher_key     :: B.ByteString
@@ -53,8 +53,8 @@ data PN = PN { origin         :: B.ByteString
 
 defaultPN :: PN
 defaultPN = PN { origin         = "haskell.pubnub.com"
-               , pub_key        = B.empty
-               , sub_key        = B.empty
+               , pub_key        = T.empty
+               , sub_key        = T.empty
                , sec_key        = "0"
                , channels       = []
                , jsonp_callback = 0
@@ -100,7 +100,7 @@ data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([B.ByteString], Ti
 
 instance FromJSON EncryptedSubscribeResponse
 
-type UUID = B.ByteString
+type UUID = T.Text
 type Occupancy = Integer
 
 data Action = Join | Leave | Timeout

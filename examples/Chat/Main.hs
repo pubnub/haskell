@@ -42,9 +42,9 @@ newClient name = either (error . show) (\x -> Client { clientName = name
                                                      , pn = x}) encKey
   where
     encKey = setEncryptionKey (defaultPN { channels = ["testchathaskell2"]
-                                          , sub_key = "demo"
-                                          , pub_key = "demo"
-                                          , ssl     = True }) "enigma"
+                                         , sub_key = "demo"
+                                         , pub_key = "demo"
+                                         , ssl     = True }) "enigma"
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
@@ -55,13 +55,13 @@ runClient Client{..} = do
     return ()
   where
     presenceRun =
-      presence pn (encodeUtf8 clientName) outputPresence
+      presence pn clientName outputPresence
 
     cli a b = forever $ do
       msg <- I.getLine
       case msg of
         "/leave" -> do
-          leave pn (head $ channels pn) (encodeUtf8 clientName)
+          leave pn (head $ channels pn) clientName
           unsubscribe a
           unsubscribe b
           mzero
@@ -70,12 +70,12 @@ runClient Client{..} = do
                                               , msg=msg }
 
     receiver =
-      subscribe pn (Just (encodeUtf8 clientName)) output
+      subscribe pn (Just clientName) output
 
 outputPresence :: Maybe Presence -> IO ()
 outputPresence (Just Presence{..}) = do
-  B.putStr "** "
-  B.putStr uuid
+  I.putStr "** "
+  I.putStr uuid
   case action of
     Join ->
       putStrLn " has joined channel"
