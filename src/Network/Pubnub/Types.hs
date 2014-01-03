@@ -64,10 +64,10 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
 
 setEncryptionKey :: PN -> B.ByteString -> PN
 setEncryptionKey pn key =
-  pn{ctx = Just (initAES128 $ convertKey key)}
+  pn{ctx = Just (initAES256 $ convertKey key)}
   where
-    initAES128 :: B.ByteString -> AES
-    initAES128 = either (error . show) cipherInit . makeKey
+    initAES256 :: B.ByteString -> AES
+    initAES256 = either (error . show) cipherInit . makeKey
 
     convertKey k = B.pack . take 32 . showDigest . sha256 $ L.fromStrict k
 
