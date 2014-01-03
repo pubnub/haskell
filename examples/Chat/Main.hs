@@ -13,8 +13,6 @@ import Data.Aeson
 import Control.Concurrent.Async
 import Control.Monad
 import qualified Data.Text.IO as I
-import Data.Text.Encoding
-import qualified Data.ByteString.Char8 as B
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as L
 

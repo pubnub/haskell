@@ -10,6 +10,8 @@ module Network.Pubnub.Types
        , Timestamp(..)
        , PN(..)
        , defaultPN
+       , SubscribeOptions(..)
+       , defaultSubscribeOptions
        , SubscribeResponse(..)
        , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
@@ -63,6 +65,27 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , ctx            = Nothing
                , iv             = makeIV (B.pack "0123456789012345")
                , ssl            = False }
+
+data SubscribeOptions a = SubscribeOptions { onMsg        :: (a -> IO ())
+                                           , onConnect    :: IO ()
+                                           , onDisconnect :: IO ()
+                                           , onError      :: IO ()
+                                           , onPresence   :: (Action -> IO ())
+                                           , onReconnect  :: IO ()
+
+                                           , restore      :: Bool
+                                           , windowing    :: Maybe Integer }
+
+defaultSubscribeOptions = SubscribeOptions { onMsg        = \_ -> return ()
+                                           , onConnect    = return ()
+                                           , onDisconnect = return ()
+                                           , onError      = return ()
+                                           , onPresence   = \_ -> return ()
+                                           , onReconnect  = return ()
+
+                                           , restore      = False
+                                           , windowing    = Nothing }
+
 
 setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =
