@@ -62,14 +62,14 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , ctx            = Nothing
                , iv             = makeIV (B.pack "0123456789012345") }
 
-setEncryptionKey :: PN -> B.ByteString -> PN
+setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =
-  pn{ctx = Just (initAES256 $ convertKey key)}
+  either Left (\a -> Right pn{ctx = Just (initAES256 a)}) (convertKey key)
   where
-    initAES256 :: B.ByteString -> AES
-    initAES256 = either (error . show) cipherInit . makeKey
+    initAES256 :: Key AES -> AES
+    initAES256 = cipherInit
 
-    convertKey k = B.pack . take 32 . showDigest . sha256 $ L.fromStrict k
+    convertKey k = makeKey (B.pack . take 32 . showDigest . sha256 $ L.fromStrict k)
 
 newtype Timestamp = Timestamp Integer
                   deriving (Show)

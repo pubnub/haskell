@@ -38,10 +38,12 @@ main = do
   runClient $ newClient username
 
 newClient :: ClientName -> Client
-newClient name = Client { clientName = name
-                        , pn = setEncryptionKey (defaultPN { channels = ["testchathaskell2"]
-                                                           , sub_key  = "demo"
-                                                           , pub_key  = "demo" }) "enigma" }
+newClient name = either (error . show) (\x -> Client { clientName = name
+                                                     , pn = x}) encKey
+  where
+    encKey = setEncryptionKey (defaultPN { channels = ["testchathaskell2"]
+                                          , sub_key  = "demo"
+                                          , pub_key  = "demo" }) "enigma"
 
 runClient :: Client -> IO ()
 runClient Client{..} = do

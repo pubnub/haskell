@@ -48,7 +48,7 @@ time = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b, Show b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
+subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
 subscribe pn uid fn =
   async (subscribe' pn)
   where
@@ -130,7 +130,7 @@ hereNow pn channel = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-presence :: (FromJSON b, Show b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
+presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
 presence pn uid =
   subscribe (pn { ctx=Nothing, channels=presence_channels }) (Just uid)
   where
