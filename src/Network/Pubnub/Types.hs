@@ -12,6 +12,7 @@ module Network.Pubnub.Types
        , defaultPN
        , SubscribeOptions(..)
        , defaultSubscribeOptions
+       , ConnectResponse(..)
        , SubscribeResponse(..)
        , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
@@ -107,6 +108,11 @@ instance FromJSON Timestamp where
   parseJSON (Array a)  =
     Timestamp <$> (withNumber "Integral" $ pure . floor) (V.head a)
   parseJSON _          = empty
+
+data ConnectResponse = ConnectResponse ([Value], Timestamp)
+                         deriving (Show, Generic)
+
+instance FromJSON ConnectResponse
 
 data PublishResponse = PublishResponse Integer String Timestamp
                      deriving (Show, Generic)

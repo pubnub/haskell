@@ -68,7 +68,8 @@ runClient Client{..} = do
                                               , msg=msg }
 
     receiver =
-      subscribe pn (Just clientName) output
+      subscribe pn defaultSubscribeOptions{ onMsg = output
+                                          , onConnect = (putStrLn "Connected...") } (Just clientName)
 
 outputPresence :: Maybe Presence -> IO ()
 outputPresence (Just Presence{..}) = do

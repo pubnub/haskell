@@ -49,11 +49,28 @@ time = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
-subscribe pn uid fn =
-  async (subscribe' pn)
+subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
+subscribe pn subOpts uid = do
+  async (withManager $ \manager -> connect manager >>= subscribe' manager)
   where
-    subscribe' pn' = do
+    connect manager = do
+      let req = buildRequest pn [ "subscribe"
+                                 , encodeUtf8 $ sub_key pn
+                                 , encodeUtf8 $ T.intercalate "," (channels pn)
+                                 , bsFromInteger $ jsonp_callback pn
+                                 , "0"] (case uid of
+                                            Just u -> [("uuid", encodeUtf8 u)]
+                                            Nothing -> [])
+
+      res <- httpLbs req manager
+      case decode $ responseBody res of
+        Just (ConnectResponse ([], t)) -> do
+          liftIO (onConnect subOpts)
+          return pn{time_token=t}
+        _ ->
+          return pn
+
+    subscribe' manager pn' = do
       let req = buildRequest pn' [ "subscribe"
                                  , encodeUtf8 $ sub_key pn'
                                  , encodeUtf8 $ T.intercalate "," (channels pn')
@@ -61,29 +78,29 @@ subscribe pn uid fn =
                                  , head . L.toChunks $ encode (time_token pn')] (case uid of
                                                                                     Just u -> [("uuid", encodeUtf8 u)]
                                                                                     Nothing -> [])
-      withManager $ \manager -> do
-        eres <- try $ httpLbs req manager
-        case eres of
-          Right r ->
-            case (ctx pn', iv pn') of
-              (Just c, Just i) ->
-                case decode $ responseBody r of
-                  Just (EncryptedSubscribeResponse (resp, t)) -> do
-                    _ <- lift $ mapM (fn . decodeEncrypted c i) resp
-                    lift $ subscribe' (pn' { time_token=t })
-                  Nothing ->
-                    lift $ subscribe' pn'
-              (_, _) ->
-                case decode $ responseBody r of
-                  Just (SubscribeResponse (resp, t)) -> do
-                    _ <- lift $ mapM fn resp
-                    lift $ subscribe' (pn' { time_token=t })
-                  Nothing ->
-                    lift $ subscribe' pn'
-          Left (ResponseTimeout :: HttpException) ->
-            lift $ subscribe' pn'
-          Left _ ->
-            return ()
+
+      eres <- try $ httpLbs req manager
+      case eres of
+        Right r ->
+          case (ctx pn', iv pn') of
+            (Just c, Just i) ->
+              case decode $ responseBody r of
+                Just (EncryptedSubscribeResponse (resp, t)) -> do
+                  _ <- lift $ mapM ((onMsg subOpts) . decodeEncrypted c i) resp
+                  subscribe' manager (pn' { time_token=t })
+                Nothing ->
+                  subscribe' manager pn'
+            (_, _) ->
+              case decode $ responseBody r of
+                Just (SubscribeResponse (resp, t)) -> do
+                  _ <- lift $ mapM (onMsg subOpts) resp
+                  subscribe' manager (pn' { time_token=t })
+                Nothing ->
+                  subscribe' manager pn'
+        Left (ResponseTimeout :: HttpException) ->
+          subscribe' manager pn'
+        Left _ ->
+          return ()
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
 
@@ -132,8 +149,8 @@ hereNow pn channel = do
   return (decode $ responseBody res)
 
 presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
-presence pn uid =
-  subscribe (pn { ctx=Nothing, channels=presence_channels }) (Just uid)
+presence pn uid fn =
+  subscribe (pn { ctx=Nothing, channels=presence_channels }) defaultSubscribeOptions{onMsg = fn} (Just uid)
   where
     presence_channels = map (prepend "-pnpres") (channels pn)
     prepend = flip T.append

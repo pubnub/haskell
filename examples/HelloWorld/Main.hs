@@ -11,7 +11,8 @@ import qualified Data.ByteString.Lazy as L
 main :: IO ()
 main = do
   let pn = defaultPN{channels=["hello_world"], sub_key="demo", pub_key="demo"}
-  _ <- subscribe pn Nothing output
+  _ <- subscribe pn defaultSubscribeOptions{ onMsg = output
+                                           , onConnect = (putStrLn "Connected...") } Nothing
   _ <- threadDelay 1000000
   hello <- publish pn "hello_world" ("hello" :: L.ByteString)
   print hello
