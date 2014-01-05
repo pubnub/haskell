@@ -67,28 +67,27 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , iv             = makeIV (B.pack "0123456789012345")
                , ssl            = False }
 
-data SubscribeOptions a = SubscribeOptions { onMsg        :: (a -> IO ())
-                                           , onConnect    :: IO ()
-                                           , onDisconnect :: IO ()
-                                           , onError      :: IO ()
-                                           , onPresence   :: (Action -> IO ())
-                                           , onReconnect  :: IO ()
+data SubscribeOptions a = SubscribeOptions { onMsg             :: (a -> IO ())
+                                           , onConnect         :: IO ()
+                                           , onDisconnect      :: IO ()
+                                           , onError           :: IO ()
+                                           , onPresence        :: (Action -> IO ())
+                                           , onReconnect       :: IO ()
 
+                                           , subTimeout        :: Maybe Int
                                            , resumeOnReconnect :: Bool
-                                           , restore      :: Bool
-                                           , windowing    :: Maybe Integer }
+                                           , windowing         :: Maybe Integer }
 
-defaultSubscribeOptions = SubscribeOptions { onMsg        = \_ -> return ()
-                                           , onConnect    = return ()
-                                           , onDisconnect = return ()
-                                           , onError      = return ()
-                                           , onPresence   = \_ -> return ()
-                                           , onReconnect  = return ()
+defaultSubscribeOptions = SubscribeOptions { onMsg             = \_ -> return ()
+                                           , onConnect         = return ()
+                                           , onDisconnect      = return ()
+                                           , onError           = return ()
+                                           , onPresence        = \_ -> return ()
+                                           , onReconnect       = return ()
 
+                                           , subTimeout        = Just 310
                                            , resumeOnReconnect = True
-                                           , restore      = False
-                                           , windowing    = Nothing }
-
+                                           , windowing         = Nothing }
 
 setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =

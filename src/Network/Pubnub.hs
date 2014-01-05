@@ -45,7 +45,7 @@ import qualified Data.ByteString.Base64 as B64
 
 time :: IO (Maybe Timestamp)
 time = do
-  let req = buildRequest defaultPN ["time", "0"] []
+  let req = buildRequest defaultPN ["time", "0"] []  Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
@@ -108,6 +108,7 @@ subscribe pn subOpts uid =
       (case uid of
           Just u -> [("uuid", encodeUtf8 u)]
           Nothing -> [])
+      (subTimeout subOpts)
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
 
@@ -131,7 +132,7 @@ publish pn channel msg = do
                             , sig
                             , encodeUtf8 channel
                             , bsFromInteger $ jsonp_callback pn
-                            , encrypt (ctx pn) (iv pn) encoded_msg] []
+                            , encrypt (ctx pn) (iv pn) encoded_msg] [] Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
   where
@@ -151,7 +152,7 @@ hereNow pn channel = do
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , encodeUtf8 channel] []
+                            , encodeUtf8 channel] [] Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -169,7 +170,7 @@ history pn channel options = do
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , encodeUtf8 channel] (convertHistoryOptions options)
+                            , encodeUtf8 channel] (convertHistoryOptions options) Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -181,7 +182,7 @@ leave pn channel uid = do
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel
-                            , "leave"] [("uuid", encodeUtf8 uid)]
+                            , "leave"] [("uuid", encodeUtf8 uid)] Nothing
   _ <- withManager $ httpLbs req
   return ()
 
@@ -192,17 +193,21 @@ getUuid =
 unsubscribe :: Async () -> IO ()
 unsubscribe = cancel
 
-buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Request
-buildRequest pn elems qs =
-  def { host           = encodeUtf8 $ origin pn
-      , path           = B.intercalate "/" elems
-      , method         = "GET"
-      , port           = if ssl pn then 443 else 80
-      , requestHeaders = [ ("V", "3.1")
+buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
+buildRequest pn elems qs timeout =
+  def { host            = encodeUtf8 $ origin pn
+      , path            = B.intercalate "/" elems
+      , method          = "GET"
+      , port            = if ssl pn then 443 else 80
+      , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString    = renderSimpleQuery True qs
-      , secure         = ssl pn }
+      , queryString     = renderSimpleQuery True qs
+      , secure          = ssl pn
+      , responseTimeout = Just (getTimeout timeout) }
+  where
+    getTimeout Nothing  = 5000000
+    getTimeout (Just x) = x * 1000000
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
