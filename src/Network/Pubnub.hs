@@ -50,7 +50,7 @@ time = do
   return (decode $ responseBody res :: Maybe Timestamp)
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
-subscribe pn subOpts uid = do
+subscribe pn subOpts uid =
   async (withManager $ \manager -> connect manager >>= subscribe' manager)
   where
     connect manager = do
@@ -86,7 +86,7 @@ subscribe pn subOpts uid = do
             (Just c, Just i) ->
               case decode $ responseBody r of
                 Just (EncryptedSubscribeResponse (resp, t)) -> do
-                  _ <- lift $ mapM ((onMsg subOpts) . decodeEncrypted c i) resp
+                  _ <- lift $ mapM (onMsg subOpts . decodeEncrypted c i) resp
                   subscribe' manager (pn' { time_token=t })
                 Nothing ->
                   subscribe' manager pn'
@@ -99,7 +99,8 @@ subscribe pn subOpts uid = do
                   subscribe' manager pn'
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
-        Left _ ->
+        Left _ -> do
+          liftIO (onDisconnect subOpts)
           return ()
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
@@ -122,7 +123,7 @@ publish pn channel msg = do
                             , encodeUtf8 $ pub_key pn
                             , encodeUtf8 $ sub_key pn
                             , sig
-                            , encodeUtf8 $ channel
+                            , encodeUtf8 channel
                             , bsFromInteger $ jsonp_callback pn
                             , encrypt (ctx pn) (iv pn) encoded_msg] []
   res <- withManager $ httpLbs req
@@ -144,7 +145,7 @@ hereNow pn channel = do
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , encodeUtf8 $ channel] []
+                            , encodeUtf8 channel] []
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -162,7 +163,7 @@ history pn channel options = do
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , encodeUtf8 $ channel] (convertHistoryOptions options)
+                            , encodeUtf8 channel] (convertHistoryOptions options)
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -190,7 +191,7 @@ buildRequest pn elems qs =
   def { host           = encodeUtf8 $ origin pn
       , path           = B.intercalate "/" elems
       , method         = "GET"
-      , port           = if (ssl pn) then 443 else 80
+      , port           = if ssl pn then 443 else 80
       , requestHeaders = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
