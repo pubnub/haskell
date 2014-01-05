@@ -74,6 +74,7 @@ data SubscribeOptions a = SubscribeOptions { onMsg        :: (a -> IO ())
                                            , onPresence   :: (Action -> IO ())
                                            , onReconnect  :: IO ()
 
+                                           , resumeOnReconnect :: Bool
                                            , restore      :: Bool
                                            , windowing    :: Maybe Integer }
 
@@ -84,6 +85,7 @@ defaultSubscribeOptions = SubscribeOptions { onMsg        = \_ -> return ()
                                            , onPresence   = \_ -> return ()
                                            , onReconnect  = return ()
 
+                                           , resumeOnReconnect = True
                                            , restore      = False
                                            , windowing    = Nothing }
 

@@ -51,57 +51,63 @@ time = do
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
 subscribe pn subOpts uid =
-  async (withManager $ \manager -> connect manager >>= subscribe' manager)
+  async (withManager $ \manager -> connect pn{time_token=(Timestamp 0)} manager False)
   where
-    connect manager = do
-      let req = buildRequest pn [ "subscribe"
-                                 , encodeUtf8 $ sub_key pn
-                                 , encodeUtf8 $ T.intercalate "," (channels pn)
-                                 , bsFromInteger $ jsonp_callback pn
-                                 , "0"] (case uid of
-                                            Just u -> [("uuid", encodeUtf8 u)]
-                                            Nothing -> [])
-
+    connect pn' manager isReconnect = do
+      let req = buildSubscribeRequest pn'
       res <- httpLbs req manager
       case decode $ responseBody res of
         Just (ConnectResponse ([], t)) -> do
-          liftIO (onConnect subOpts)
-          return pn{time_token=t}
+          if isReconnect then liftIO (onConnect subOpts) else liftIO (onReconnect subOpts)
+          subscribe' manager pn{time_token=t}
         _ ->
-          return pn
+          subscribe' manager pn
 
     subscribe' manager pn' = do
-      let req = buildRequest pn' [ "subscribe"
-                                 , encodeUtf8 $ sub_key pn'
-                                 , encodeUtf8 $ T.intercalate "," (channels pn')
-                                 , bsFromInteger $ jsonp_callback pn'
-                                 , head . L.toChunks $ encode (time_token pn')] (case uid of
-                                                                                    Just u -> [("uuid", encodeUtf8 u)]
-                                                                                    Nothing -> [])
-
+      let req = buildSubscribeRequest pn'
       eres <- try $ httpLbs req manager
       case eres of
         Right r ->
-          case (ctx pn', iv pn') of
-            (Just c, Just i) ->
-              case decode $ responseBody r of
-                Just (EncryptedSubscribeResponse (resp, t)) -> do
-                  _ <- lift $ mapM (onMsg subOpts . decodeEncrypted c i) resp
-                  subscribe' manager (pn' { time_token=t })
-                Nothing ->
-                  subscribe' manager pn'
-            (_, _) ->
-              case decode $ responseBody r of
-                Just (SubscribeResponse (resp, t)) -> do
-                  _ <- lift $ mapM (onMsg subOpts) resp
-                  subscribe' manager (pn' { time_token=t })
-                Nothing ->
-                  subscribe' manager pn'
+          case responseStatus r of
+            ok200 -> do
+              case (ctx pn', iv pn') of
+                (Just c, Just i) ->
+                  case decode $ responseBody r of
+                    Just (EncryptedSubscribeResponse (resp, t)) -> do
+                      _ <- lift $ mapM (onMsg subOpts . decodeEncrypted c i) resp
+                      subscribe' manager (pn' { time_token=t })
+                    Nothing ->
+                      subscribe' manager pn'
+                (_, _) ->
+                  case decode $ responseBody r of
+                    Just (SubscribeResponse (resp, t)) -> do
+                      _ <- lift $ mapM (onMsg subOpts) resp
+                      subscribe' manager (pn' { time_token=t })
+                    Nothing ->
+                      subscribe' manager pn'
+            _ -> do
+              liftIO (onDisconnect subOpts)
+              reconnect pn' manager
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
         Left _ -> do
           liftIO (onDisconnect subOpts)
-          return ()
+          reconnect pn' manager
+
+    reconnect pn' manager = do
+      if (resumeOnReconnect subOpts)
+        then connect pn' manager True
+        else connect pn'{time_token=(Timestamp 0)} manager True
+
+    buildSubscribeRequest pn' =
+      buildRequest pn' [ "subscribe"
+                       , encodeUtf8 $ sub_key pn'
+                       , encodeUtf8 $ T.intercalate "," (channels pn')
+                       , bsFromInteger $ jsonp_callback pn'
+                       , head . L.toChunks $ encode (time_token pn')]
+      (case uid of
+          Just u -> [("uuid", encodeUtf8 u)]
+          Nothing -> [])
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
 
