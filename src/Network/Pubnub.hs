@@ -26,6 +26,7 @@ import Data.Aeson
 import Data.UUID.V4
 import Network.HTTP.Conduit
 import Control.Monad.Trans
+import Network.HTTP.Types.Status (ok200)
 import Network.HTTP.Types.URI
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
@@ -51,17 +52,17 @@ time = do
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
 subscribe pn subOpts uid =
-  async (withManager $ \manager -> connect pn{time_token=(Timestamp 0)} manager False)
+  async (withManager $ \manager -> connect pn{time_token = Timestamp 0} manager False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
       res <- httpLbs req manager
       case decode $ responseBody res of
         Just (ConnectResponse ([], t)) -> do
-          if isReconnect then liftIO (onConnect subOpts) else liftIO (onReconnect subOpts)
-          if (resumeOnReconnect subOpts && isReconnect)
-            then subscribe' manager pn
-            else subscribe' manager pn{time_token=t}
+          liftIO (if isReconnect then onConnect subOpts else onReconnect subOpts)
+          subscribe' manager (if resumeOnReconnect subOpts && isReconnect
+                              then pn
+                              else pn{time_token=t})
         _ ->
           subscribe' manager pn
 
@@ -71,7 +72,7 @@ subscribe pn subOpts uid =
       case eres of
         Right r ->
           case responseStatus r of
-            ok200 -> do
+            ok200 ->
               case (ctx pn', iv pn') of
                 (Just c, Just i) ->
                   case decode $ responseBody r of
