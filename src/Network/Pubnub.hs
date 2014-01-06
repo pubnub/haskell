@@ -59,7 +59,9 @@ subscribe pn subOpts uid =
       res <- httpLbs req manager
       case decode $ responseBody res of
         Just (ConnectResponse ([], t)) -> do
-          liftIO (if isReconnect then onConnect subOpts else onReconnect subOpts)
+          liftIO (if isReconnect
+                  then onConnect subOpts
+                  else onReconnect subOpts)
           subscribe' manager (if resumeOnReconnect subOpts && isReconnect
                               then pn
                               else pn{time_token=t})
@@ -71,8 +73,8 @@ subscribe pn subOpts uid =
       eres <- try $ httpLbs req manager
       case eres of
         Right r ->
-          case responseStatus r of
-            ok200 ->
+          if responseStatus r == ok200
+          then
               case (ctx pn', iv pn') of
                 (Just c, Just i) ->
                   case decode $ responseBody r of
@@ -88,7 +90,7 @@ subscribe pn subOpts uid =
                       subscribe' manager (pn' { time_token=t })
                     Nothing ->
                       subscribe' manager pn'
-            _ -> do
+            else do
               liftIO (onDisconnect subOpts)
               reconnect pn' manager
         Left (ResponseTimeout :: HttpException) ->
