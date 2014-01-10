@@ -125,7 +125,7 @@ data SubscribeResponse a = SubscribeResponse (a, Timestamp)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
 
-data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([B.ByteString], Timestamp)
+data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Timestamp)
                          deriving (Show, Generic)
 
 instance FromJSON EncryptedSubscribeResponse

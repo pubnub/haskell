@@ -119,10 +119,10 @@ subscribe pn subOpts uid =
 
     decrypt c i m = unpadPKCS5 $ decryptCBC c i $ B64.decodeLenient $ decodeJson m
 
-    decodeJson :: B.ByteString -> B.ByteString
-    decodeJson s = case decode (L.fromStrict s) of
-                       Nothing -> s
-                       Just l -> L.toStrict l
+    decodeJson :: T.Text -> B.ByteString
+    decodeJson s = case decode (L.fromStrict (encodeUtf8 s)) of
+                       Nothing -> encodeUtf8 s
+                       Just l -> encodeUtf8 l
 
 publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
@@ -145,7 +145,7 @@ publish pn channel msg = do
     encrypt Nothing     _     m = m
     encrypt   _       Nothing m = m
 
-    encodeJson s = L.toStrict $ encode s
+    encodeJson s = L.toStrict $ encode (decodeUtf8 s)
 
 hereNow :: PN -> T.Text -> IO (Maybe HereNow)
 hereNow pn channel = do

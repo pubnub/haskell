@@ -52,7 +52,7 @@ executable hello_world
   build-depends:        base ==4.6.*, Cabal >= 1.16.0
                         , pubnub
                         , aeson >= 0.6.2.1
-                        , bytestring >= 0.10.0.2
+                        , text >= 0.11.1
 
 executable chat
   hs-source-dirs:       examples/Chat
