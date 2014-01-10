@@ -32,6 +32,7 @@ import Control.Applicative ((<$>), pure, empty)
 import Data.Text.Read
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Aeson.Types
 
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types
@@ -78,6 +79,7 @@ data SubscribeOptions a = SubscribeOptions { onMsg             :: (a -> IO ())
                                            , resumeOnReconnect :: Bool
                                            , windowing         :: Maybe Integer }
 
+defaultSubscribeOptions :: SubscribeOptions a
 defaultSubscribeOptions = SubscribeOptions { onMsg             = \_ -> return ()
                                            , onConnect         = return ()
                                            , onDisconnect      = return ()
@@ -107,7 +109,7 @@ instance ToJSON Timestamp where
 instance FromJSON Timestamp where
   parseJSON (String s) = Timestamp <$> (pure . decimalRight) s
   parseJSON (Array a)  =
-    Timestamp <$> (withNumber "Integral" $ pure . floor) (V.head a)
+    Timestamp <$> (withScientific "Integral" $ pure . floor) (V.head a)
   parseJSON _          = empty
 
 data ConnectResponse = ConnectResponse ([Value], Timestamp)
@@ -125,7 +127,7 @@ data SubscribeResponse a = SubscribeResponse (a, Timestamp)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
 
-data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([B.ByteString], Timestamp)
+data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Timestamp)
                          deriving (Show, Generic)
 
 instance FromJSON EncryptedSubscribeResponse

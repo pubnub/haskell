@@ -6,7 +6,7 @@ import Network.Pubnub
 import Network.Pubnub.Types
 import Data.Aeson
 import Control.Concurrent
-import qualified Data.ByteString.Lazy as L
+import qualified Data.Text as T
 
 main :: IO ()
 main = do
@@ -14,7 +14,7 @@ main = do
   _ <- subscribe pn defaultSubscribeOptions{ onMsg = output
                                            , onConnect = (putStrLn "Connected...") } Nothing
   _ <- threadDelay 1000000
-  hello <- publish pn "hello_world" ("hello" :: L.ByteString)
+  hello <- publish pn "hello_world" ("hello" :: T.Text)
   print hello
   hello2 <- history pn "hello_world" [ Reverse True
                        , Count 2] :: IO (Maybe (History Value))
