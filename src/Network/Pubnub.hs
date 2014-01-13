@@ -60,8 +60,8 @@ subscribe pn subOpts uid =
       case decode $ responseBody res of
         Just (ConnectResponse ([], t)) -> do
           liftIO (if isReconnect
-                  then onConnect subOpts
-                  else onReconnect subOpts)
+                  then onReconnect subOpts
+                  else onConnect subOpts)
           subscribe' manager (if resumeOnReconnect subOpts && isReconnect
                               then pn
                               else pn{time_token=t})
