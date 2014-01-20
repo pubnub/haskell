@@ -25,9 +25,8 @@ import Data.Default (def)
 import Data.Aeson
 import Data.UUID.V4
 import Network.HTTP.Conduit
+import Network.HTTP.Types
 import Control.Monad.Trans
-import Network.HTTP.Types.Status (ok200)
-import Network.HTTP.Types.URI
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
@@ -52,51 +51,56 @@ time = do
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
 subscribe pn subOpts uid =
-  async (withManager $ \manager -> connect pn{time_token = Timestamp 0} manager False)
+  async (withManager $ \manager -> lift $ connect pn{time_token = Timestamp 0} manager False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
-      res <- httpLbs req manager
-      case decode $ responseBody res of
-        Just (ConnectResponse ([], t)) -> do
-          liftIO (if isReconnect
-                  then onReconnect subOpts
-                  else onConnect subOpts)
-          subscribe' manager (if resumeOnReconnect subOpts && isReconnect
-                              then pn
-                              else pn{time_token=t})
-        _ ->
-          subscribe' manager pn
+      eres <- try $ httpLbs req manager :: IO (Either HttpException (Response L.ByteString))
+      case eres of
+        Right res ->
+          case decode $ responseBody res of
+            Just (ConnectResponse ([], t)) -> do
+              liftIO (if isReconnect
+                      then onReconnect subOpts
+                      else onConnect subOpts)
+              subscribe' manager (if resumeOnReconnect subOpts && isReconnect
+                                  then pn
+                                  else pn{time_token=t})
+            _ -> do
+              liftIO (onDisconnect subOpts)
+              subscribe' manager pn
+        Left (StatusCodeException (Status code msg) _ _) -> do
+          liftIO $ (onError subOpts) code msg
+          connect pn' manager isReconnect
+        Left _ ->
+          connect pn' manager isReconnect
 
     subscribe' manager pn' = do
       let req = buildSubscribeRequest pn' $ head . L.toChunks $ encode (time_token pn')
-      eres <- try $ httpLbs req manager
+      eres <- try $ httpLbs req manager :: IO (Either HttpException (Response L.ByteString))
       case eres of
         Right r ->
-          if responseStatus r == ok200
-          then
-              case (ctx pn', iv pn') of
-                (Just c, Just i) ->
-                  case decode $ responseBody r of
-                    Just (EncryptedSubscribeResponse (resp, t)) -> do
-                      _ <- lift $ mapM (onMsg subOpts . decodeEncrypted c i) resp
-                      subscribe' manager (pn' { time_token=t })
-                    Nothing ->
-                      subscribe' manager pn'
-                (_, _) ->
-                  case decode $ responseBody r of
-                    Just (SubscribeResponse (resp, t)) -> do
-                      _ <- lift $ mapM (onMsg subOpts) resp
-                      subscribe' manager (pn' { time_token=t })
-                    Nothing ->
-                      subscribe' manager pn'
-            else do
-              liftIO (onDisconnect subOpts)
-              reconnect pn' manager
+          case (ctx pn', iv pn') of
+            (Just c, Just i) ->
+              case decode $ responseBody r of
+                Just (EncryptedSubscribeResponse (resp, t)) -> do
+                  _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
+                  subscribe' manager (pn' { time_token=t })
+                Nothing ->
+                  subscribe' manager pn'
+            (_, _) ->
+              case decode $ responseBody r of
+                Just (SubscribeResponse (resp, t)) -> do
+                  _ <- liftIO $ mapM (onMsg subOpts) resp
+                  subscribe' manager (pn' { time_token=t })
+                Nothing ->
+                  subscribe' manager pn'
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
-        Left _ -> do
-          liftIO (onDisconnect subOpts)
+        Left (StatusCodeException (Status code msg) _ _) -> do
+          liftIO $ (onError subOpts) code msg
+          reconnect pn' manager
+        Left _ ->
           reconnect pn' manager
 
     reconnect pn' manager = connect pn' manager True
