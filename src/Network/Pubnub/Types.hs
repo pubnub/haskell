@@ -71,7 +71,7 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
 data SubscribeOptions a = SubscribeOptions { onMsg             :: (a -> IO ())
                                            , onConnect         :: IO ()
                                            , onDisconnect      :: IO ()
-                                           , onError           :: (Int -> B.ByteString -> IO ())
+                                           , onError           :: (Maybe Int -> Maybe B.ByteString -> IO ())
                                            , onPresence        :: (Action -> IO ())
                                            , onReconnect       :: IO ()
 

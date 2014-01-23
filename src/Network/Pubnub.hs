@@ -70,9 +70,10 @@ subscribe pn subOpts uid =
               liftIO (onDisconnect subOpts)
               subscribe' manager pn
         Left (StatusCodeException (Status code msg) _ _) -> do
-          liftIO $ (onError subOpts) code msg
+          liftIO $ (onError subOpts) (Just code) (Just msg)
           connect pn' manager isReconnect
-        Left _ ->
+        Left _ -> do
+          liftIO $ (onError subOpts) Nothing Nothing
           connect pn' manager isReconnect
 
     subscribe' manager pn' = do
@@ -98,9 +99,10 @@ subscribe pn subOpts uid =
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
         Left (StatusCodeException (Status code msg) _ _) -> do
-          liftIO $ (onError subOpts) code msg
+          liftIO $ (onError subOpts) (Just code) (Just msg)
           reconnect pn' manager
-        Left _ ->
+        Left _ -> do
+          liftIO $ (onError subOpts) Nothing Nothing
           reconnect pn' manager
 
     reconnect pn' manager = connect pn' manager True
