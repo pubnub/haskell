@@ -33,16 +33,21 @@ main :: IO ()
 main = do
   putStrLn "Enter Username: "
   username <- I.getLine
-  runClient $ newClient username
+  runClient $ newClient username True
 
-newClient :: ClientName -> Client
-newClient name = either (error . show) (\x -> Client { clientName = name
-                                                     , pn = x}) encKey
+newClient :: ClientName -> Bool -> Client
+newClient name encrypt
+  | encrypt == True = either (error . show) (\x -> Client { clientName = name
+                                                          , pn         = x}) encKey
+  | otherwise       = Client { clientName = name
+                             , pn         = newPN}
   where
-    encKey = setEncryptionKey (defaultPN { channels = ["testchathaskell2"]
-                                         , sub_key = "demo"
-                                         , pub_key = "demo"
-                                         , ssl     = True }) "enigma"
+    encKey = setEncryptionKey newPN "enigma"
+
+    newPN  = defaultPN { channels = ["testchathaskell2"]
+                       , sub_key  = "demo"
+                       , pub_key  = "demo"
+                       , ssl      = False }
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
