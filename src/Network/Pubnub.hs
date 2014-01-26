@@ -229,10 +229,7 @@ buildRequest pn elems qs timeout =
                          , ("Accept", "*/*")]
       , queryString     = renderSimpleQuery True qs
       , secure          = ssl pn
-      , responseTimeout = Just (getTimeout timeout) }
-  where
-    getTimeout Nothing  = 5000000
-    getTimeout (Just x) = x * 1000000
+      , responseTimeout = Just (maybe 5000000 (* 1000000) timeout) }
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
