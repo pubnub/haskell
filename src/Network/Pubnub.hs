@@ -51,15 +51,19 @@ time = do
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
 subscribe pn subOpts =
-  case uid subOpts of
-    Nothing -> getUuid >>= \u -> subscribe' subOpts{uid = Just u}
-    _       -> subscribe' subOpts
-  where
-    subscribe' subOpts' = do
-      a <- presence pn (uid subOpts') (onPresence subOpts')
-      b <- subscribeInternal pn subOpts'
-      link2 a b
-      return a
+    case onPresence subOpts of
+      Nothing -> subscribeInternal pn subOpts
+      Just onPresenceCallback ->
+          case uid subOpts of
+            Nothing -> getUuid >>= \u -> subscribe' subOpts{uid = Just u}
+            _       -> subscribe' subOpts
+          where
+            subscribe' subOpts' =
+                do
+                  a <- presence pn (uid subOpts') onPresenceCallback
+                  b <- subscribeInternal pn subOpts'
+                  link2 a b
+                  return a
 
 subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
 subscribeInternal pn subOpts =

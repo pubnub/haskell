@@ -70,7 +70,7 @@ runClient Client{..} = do
     receiver =
       subscribe pn defaultSubscribeOptions{ uid = Just clientName
 
-                                          , onPresence = outputPresence
+                                          , onPresence = Just outputPresence
                                           , onMsg = output
                                           , onConnect = putStrLn "Connected..." }
 

@@ -74,7 +74,7 @@ data SubscribeOptions a = SubscribeOptions { uid               :: Maybe UUID
                                            , onConnect         :: IO ()
                                            , onDisconnect      :: IO ()
                                            , onError           :: Maybe Int -> Maybe B.ByteString -> IO ()
-                                           , onPresence        :: Presence -> IO ()
+                                           , onPresence        :: Maybe (Presence -> IO ())
                                            , onReconnect       :: IO ()
 
                                            , subTimeout        :: Maybe Int
@@ -88,7 +88,7 @@ defaultSubscribeOptions = SubscribeOptions { uid               = Nothing
                                            , onConnect         = return ()
                                            , onDisconnect      = return ()
                                            , onError           = \_ _ -> return ()
-                                           , onPresence        = \_ -> return ()
+                                           , onPresence        = Nothing
                                            , onReconnect       = return ()
 
                                            , subTimeout        = Just 310
