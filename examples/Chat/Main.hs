@@ -37,7 +37,7 @@ main = do
 
 newClient :: ClientName -> Bool -> Client
 newClient name encrypt
-  | encrypt == True = either (error . show) (\x -> Client { clientName = name
+  | encrypt = either (error . show) (\x -> Client { clientName = name
                                                           , pn         = x}) encKey
   | otherwise       = Client { clientName = name
                              , pn         = newPN}
@@ -51,33 +51,31 @@ newClient name encrypt
 
 runClient :: Client -> IO ()
 runClient Client{..} = do
-  a <- presenceRun
-  b <- receiver
-  withAsync (cli a b) $ \c -> do
-    _ <- waitAnyCancel [a, b, c]
+  a <- receiver
+  withAsync (cli a) $ \b -> do
+    _ <- waitAnyCancel [a, b]
     return ()
   where
-    presenceRun =
-      presence pn clientName outputPresence
-
-    cli a b = forever $ do
+    cli a = forever $ do
       msg <- I.getLine
       case msg of
         "/leave" -> do
           leave pn (head $ channels pn) clientName
           unsubscribe a
-          unsubscribe b
           mzero
         _ ->
           publish pn (head $ channels pn) Msg { username=clientName
                                               , msg=msg }
 
     receiver =
-      subscribe pn defaultSubscribeOptions{ onMsg = output
-                                          , onConnect = (putStrLn "Connected...") } (Just clientName)
+      subscribe pn defaultSubscribeOptions{ uid = Just clientName
 
-outputPresence :: Maybe Presence -> IO ()
-outputPresence (Just Presence{..}) = do
+                                          , onPresence = outputPresence
+                                          , onMsg = output
+                                          , onConnect = putStrLn "Connected..." }
+
+outputPresence :: Presence -> IO ()
+outputPresence Presence{..} = do
   I.putStr "** "
   I.putStr uuid
   case action of
@@ -87,7 +85,6 @@ outputPresence (Just Presence{..}) = do
       putStrLn " has left channel"
     Timeout ->
       putStrLn " has dropped from channel"
-outputPresence _ = return ()
 
 output :: Maybe Msg -> IO ()
 output (Just m) =

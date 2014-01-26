@@ -68,11 +68,13 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , iv             = makeIV (B.pack "0123456789012345")
                , ssl            = False }
 
-data SubscribeOptions a = SubscribeOptions { onMsg             :: (a -> IO ())
+data SubscribeOptions a = SubscribeOptions { uid               :: Maybe UUID
+
+                                           , onMsg             :: a -> IO ()
                                            , onConnect         :: IO ()
                                            , onDisconnect      :: IO ()
-                                           , onError           :: (Maybe Int -> Maybe B.ByteString -> IO ())
-                                           , onPresence        :: (Action -> IO ())
+                                           , onError           :: Maybe Int -> Maybe B.ByteString -> IO ()
+                                           , onPresence        :: Presence -> IO ()
                                            , onReconnect       :: IO ()
 
                                            , subTimeout        :: Maybe Int
@@ -80,7 +82,9 @@ data SubscribeOptions a = SubscribeOptions { onMsg             :: (a -> IO ())
                                            , windowing         :: Maybe Integer }
 
 defaultSubscribeOptions :: SubscribeOptions a
-defaultSubscribeOptions = SubscribeOptions { onMsg             = \_ -> return ()
+defaultSubscribeOptions = SubscribeOptions { uid               = Nothing
+
+                                           , onMsg             = \_ -> return ()
                                            , onConnect         = return ()
                                            , onDisconnect      = return ()
                                            , onError           = \_ _ -> return ()

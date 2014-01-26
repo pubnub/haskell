@@ -49,8 +49,20 @@ time = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
-subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> Maybe UUID -> IO (Async ())
-subscribe pn subOpts uid =
+subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
+subscribe pn subOpts =
+  case uid subOpts of
+    Nothing -> getUuid >>= \u -> subscribe' subOpts{uid = Just u}
+    _       -> subscribe' subOpts
+  where
+    subscribe' subOpts' = do
+      a <- presence pn (uid subOpts') (onPresence subOpts')
+      b <- subscribeInternal pn subOpts'
+      link2 a b
+      return a
+
+subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
+subscribeInternal pn subOpts =
   async (withManager $ \manager -> lift $ connect pn{time_token = Timestamp 0} manager False)
   where
     connect pn' manager isReconnect = do
@@ -70,10 +82,10 @@ subscribe pn subOpts uid =
               liftIO (onDisconnect subOpts)
               subscribe' manager pn
         Left (StatusCodeException (Status code msg) _ _) -> do
-          liftIO $ (onError subOpts) (Just code) (Just msg)
+          liftIO $ onError subOpts (Just code) (Just msg)
           connect pn' manager isReconnect
         Left _ -> do
-          liftIO $ (onError subOpts) Nothing Nothing
+          liftIO $ onError subOpts Nothing Nothing
           connect pn' manager isReconnect
 
     subscribe' manager pn' = do
@@ -99,10 +111,10 @@ subscribe pn subOpts uid =
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
         Left (StatusCodeException (Status code msg) _ _) -> do
-          liftIO $ (onError subOpts) (Just code) (Just msg)
+          liftIO $ onError subOpts (Just code) (Just msg)
           reconnect pn' manager
         Left _ -> do
-          liftIO $ (onError subOpts) Nothing Nothing
+          liftIO $ onError subOpts Nothing Nothing
           reconnect pn' manager
 
     reconnect pn' manager = connect pn' manager True
@@ -113,9 +125,9 @@ subscribe pn subOpts uid =
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
                        , tt ]
-      (case uid of
-          Just u -> [("uuid", encodeUtf8 u)]
-          Nothing -> [])
+      (case uid subOpts of
+         Nothing -> []
+         Just u -> [("uuid", encodeUtf8 u)])
       (subTimeout subOpts)
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
@@ -164,9 +176,10 @@ hereNow pn channel = do
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
-presence :: (FromJSON b) => PN -> UUID -> (b -> IO ()) -> IO (Async ())
-presence pn uid fn =
-  subscribe (pn { ctx=Nothing, channels=presence_channels }) defaultSubscribeOptions{onMsg = fn} (Just uid)
+presence :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
+presence pn u fn =
+  subscribeInternal (pn { ctx=Nothing, channels=presence_channels }) defaultSubscribeOptions{ onMsg = fn
+                                                                                            , uid   = u }
   where
     presence_channels = map (prepend "-pnpres") (channels pn)
     prepend = flip T.append
@@ -183,14 +196,14 @@ history pn channel options = do
   return (decode $ responseBody res)
 
 leave :: PN -> T.Text -> UUID -> IO ()
-leave pn channel uid = do
+leave pn channel u = do
   let req = buildRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel
-                            , "leave"] [("uuid", encodeUtf8 uid)] Nothing
+                            , "leave"] [("uuid", encodeUtf8 u)] Nothing
   _ <- withManager $ httpLbs req
   return ()
 
