@@ -129,9 +129,7 @@ subscribeInternal pn subOpts =
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
                        , tt ]
-      (case uid subOpts of
-         Nothing -> []
-         Just u -> [("uuid", encodeUtf8 u)])
+      (maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uid subOpts))
       (subTimeout subOpts)
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
@@ -164,8 +162,8 @@ publish pn channel msg = do
     signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict $ encodeUtf8 secret) (L.fromStrict m)
 
     encrypt (Just c) (Just i) m = encodeJson $ B64.encode $ encryptCBC c i (padPKCS5 16 m)
-    encrypt Nothing     _     m = m
-    encrypt   _       Nothing m = m
+    encrypt Nothing  _        m = m
+    encrypt _       Nothing   m = m
 
     encodeJson s = L.toStrict $ encode (decodeUtf8 s)
 
@@ -182,11 +180,14 @@ hereNow pn channel = do
 
 presence :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
 presence pn u fn =
-  subscribeInternal (pn { ctx=Nothing, channels=presence_channels }) defaultSubscribeOptions{ onMsg = fn
-                                                                                            , uid   = u }
+  let subOpts = defaultSubscribeOptions{ onMsg = fn
+                                       , uid   = u }
+      pn'     = pn { ctx=Nothing, channels=presence_channels }
+  in
+   subscribeInternal pn' subOpts
   where
     presence_channels = map (prepend "-pnpres") (channels pn)
-    prepend = flip T.append
+    prepend           = flip T.append
 
 history :: FromJSON b => PN -> T.Text -> HistoryOptions -> IO (Maybe (History b))
 history pn channel options = do

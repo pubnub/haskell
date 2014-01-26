@@ -189,10 +189,12 @@ convertHistoryOption (Count i)       = ("count", B.pack $ show i)
 decimalRight :: T.Text -> Integer
 decimalRight = either (const 0) fst . decimal
 
-$(deriveJSON defaultOptions{ fieldLabelModifier= \ x -> case x of
-                                                    "presenceOccupancy" -> "occupancy"
-                                                    _ -> x } ''Presence)
+$(deriveJSON defaultOptions{ fieldLabelModifier =
+                                \ x -> case x of
+                                  "presenceOccupancy" -> "occupancy"
+                                  _                   -> x } ''Presence)
 
-$(deriveJSON defaultOptions{ fieldLabelModifier= \ x -> case x of
-                                                    "herenowOccupancy" -> "occupancy"
-                                                    _ -> x } ''HereNow)
+$(deriveJSON defaultOptions{ fieldLabelModifier = \ x ->
+                              case x of
+                                "herenowOccupancy" -> "occupancy"
+                                _                  -> x } ''HereNow)

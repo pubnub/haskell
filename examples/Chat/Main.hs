@@ -38,7 +38,7 @@ main = do
 newClient :: ClientName -> Bool -> Client
 newClient name encrypt
   | encrypt = either (error . show) (\x -> Client { clientName = name
-                                                          , pn         = x}) encKey
+                                                  , pn         = x}) encKey
   | otherwise       = Client { clientName = name
                              , pn         = newPN}
   where
