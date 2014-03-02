@@ -17,6 +17,9 @@ module Network.Pubnub
        , leave
        , getUuid
        , unsubscribe
+       , audit
+       , auth
+       , grant
        ) where
 
 import Network.Pubnub.Types
@@ -96,17 +99,17 @@ subscribeInternal pn subOpts =
       let req = buildSubscribeRequest pn' $ head . L.toChunks $ encode (time_token pn')
       eres <- try $ httpLbs req manager :: IO (Either HttpException (Response L.ByteString))
       case eres of
-        Right r ->
+        Right res ->
           case (ctx pn', iv pn') of
             (Just c, Just i) ->
-              case decode $ responseBody r of
+              case decode $ responseBody res of
                 Just (EncryptedSubscribeResponse (resp, t)) -> do
                   _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
                   subscribe' manager (pn' { time_token=t })
                 Nothing ->
                   subscribe' manager pn'
             (_, _) ->
-              case decode $ responseBody r of
+              case decode $ responseBody res of
                 Just (SubscribeResponse (resp, t)) -> do
                   _ <- liftIO $ mapM (onMsg subOpts) resp
                   subscribe' manager (pn' { time_token=t })
@@ -218,6 +221,48 @@ getUuid =
 
 unsubscribe :: Async () -> IO ()
 unsubscribe = cancel
+
+
+-- PAM functions
+
+--pnsdk :: T.Text
+--pnsdk = "Pubnub-Haskell-Web/3.5.48"
+
+audit :: PN -> T.Text -> T.Text -> IO ()
+audit pn authK channel = do
+  let msg = signInput (sub_key pn) (pub_key pn) "1392660249"
+  print msg
+  let s = signature (sec_key pn) (L.fromStrict $ encodeUtf8 msg)
+  let req = buildRequest pn [ "v1"
+                            , "auth"
+                            , "audit"
+                            , "sub-key"
+                            , encodeUtf8 $ sub_key pn] [("signature", s), ("timestamp", "1392660249")] Nothing
+  print req
+  _ <- withManager $ httpLbs req
+  return ()
+  where
+    signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict $ encodeUtf8 secret) m
+
+    signInput subKey pubKey t = T.intercalate T.empty [subKey, "\n", pubKey, "\n", "audit\n", "auth=", authK, "&channel=", channel, "&timestamp=", t]
+
+
+
+grant :: PN -> Auth -> IO ()
+grant pn _ = do
+  let req = buildRequest pn [ "v1"
+                            , "auth"
+                            , "grant"
+                            , "sub-key"
+                            , encodeUtf8 $ sub_key pn] [] Nothing
+  _ <- withManager $ httpLbs req
+  return ()
+
+auth :: PN -> IO ()
+auth _ = do
+  return ()
+
+-- internal functions
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
 buildRequest pn elems qs timeout =
