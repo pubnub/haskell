@@ -12,6 +12,8 @@ module Network.Pubnub.Types
        , defaultPN
        , SubscribeOptions(..)
        , defaultSubscribeOptions
+       , Auth(..)
+       , defaultAuth
        , ConnectResponse(..)
        , SubscribeResponse(..)
        , EncryptedSubscribeResponse(..)
@@ -94,6 +96,20 @@ defaultSubscribeOptions = SubscribeOptions { uid               = Nothing
                                            , subTimeout        = Just 310
                                            , resumeOnReconnect = True
                                            , windowing         = Nothing }
+
+data Auth = Auth { chan    :: Maybe T.Text
+                 , authKey :: Maybe T.Text
+                 , r       :: Bool
+                 , w       :: Bool
+                 , ttl     :: Int }
+             deriving (Show)
+
+defaultAuth :: Auth
+defaultAuth = Auth { chan    = Nothing
+                   , authKey = Nothing
+                   , r       = False
+                   , w       = False
+                   , ttl     = 0 }
 
 setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =
