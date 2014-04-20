@@ -4,7 +4,7 @@
 name:                   pubnub
 version:                1.0.0
 synopsis:               PubNub Haskell SDK
--- description:
+description:            The PubNub Network makes Real-time easy with a Simple Communications API. Two Functions: Send/Receive (Publish/Subscribe). We provide a web-service API for businesses to build scalable Data Push communication apps on Mobile, Tablet and Web. Bidirectional JSON.
 homepage:               http://github.com/pubnub/haskell
 license:                MIT
 license-file:           LICENSE
