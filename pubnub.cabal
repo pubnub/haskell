@@ -2,7 +2,7 @@
 -- see http://haskell.org/cabal/users-guide/
 
 name:                   pubnub
-version:                0.1.0.0
+version:                1.0.0
 synopsis:               PubNub Haskell SDK
 -- description:
 homepage:               http://github.com/pubnub/haskell
