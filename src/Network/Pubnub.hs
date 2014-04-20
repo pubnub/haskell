@@ -17,6 +17,8 @@ module Network.Pubnub
        , leave
        , getUuid
        , unsubscribe
+
+         -- PAM API functions
        , audit
        , auth
        , grant
@@ -35,6 +37,7 @@ import Control.Applicative ((<$>))
 import Control.Exception.Lifted (try)
 import Data.Text.Encoding
 import Data.Maybe
+import Data.Time.Clock.POSIX
 
 import Data.Digest.Pure.SHA
 import Crypto.Cipher.AES
@@ -48,7 +51,7 @@ import qualified Data.ByteString.Base64 as B64
 
 time :: IO (Maybe Timestamp)
 time = do
-  let req = buildRequest defaultPN ["time", "0"] []  Nothing
+  let req = buildRequest defaultPN ["time", "0"] [] Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res :: Maybe Timestamp)
 
@@ -57,14 +60,14 @@ subscribe pn subOpts =
     case onPresence subOpts of
       Nothing -> subscribeInternal pn subOpts
       Just onPresenceCallback ->
-          case uid subOpts of
-            Nothing -> getUuid >>= \u -> subscribe' subOpts{uid = Just u}
-            _       -> subscribe' subOpts
+          case uuid_key pn of
+            Nothing -> getUuid >>= \u -> subscribe' pn{uuid_key = Just u}
+            _       -> subscribe' pn
           where
-            subscribe' subOpts' =
+            subscribe' pn' =
                 do
-                  a <- presence pn (uid subOpts') onPresenceCallback
-                  b <- subscribeInternal pn subOpts'
+                  a <- presence pn' (uuid_key pn') onPresenceCallback
+                  b <- subscribeInternal pn' subOpts
                   link2 a b
                   return a
 
@@ -132,7 +135,7 @@ subscribeInternal pn subOpts =
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
                        , tt ]
-      (maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uid subOpts))
+      (userIdOptions pn')
       (subTimeout subOpts)
 
     decodeEncrypted c i m = decodeUnencrypted $ decrypt c i m
@@ -157,7 +160,9 @@ publish pn channel msg = do
                             , sig
                             , encodeUtf8 channel
                             , bsFromInteger $ jsonp_callback pn
-                            , encrypt (ctx pn) (iv pn) encoded_msg] [] Nothing
+                            , encrypt (ctx pn) (iv pn) encoded_msg]
+            (userIdOptions pn)
+            Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
   where
@@ -183,9 +188,8 @@ hereNow pn channel = do
 
 presence :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
 presence pn u fn =
-  let subOpts = defaultSubscribeOptions{ onMsg = fn
-                                       , uid   = u }
-      pn'     = pn { ctx=Nothing, channels=presence_channels }
+  let subOpts = defaultSubscribeOptions{ onMsg = fn }
+      pn'     = pn { uuid_key=u, ctx=Nothing, channels=presence_channels }
   in
    subscribeInternal pn' subOpts
   where
@@ -199,7 +203,10 @@ history pn channel options = do
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
-                            , encodeUtf8 channel] (convertHistoryOptions options) Nothing
+                            , encodeUtf8 channel]
+            ((convertHistoryOptions options) ++
+             (userIdOptions pn))
+            Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
 
@@ -225,44 +232,56 @@ unsubscribe = cancel
 
 -- PAM functions
 
---pnsdk :: T.Text
---pnsdk = "Pubnub-Haskell-Web/3.5.48"
+audit :: PN -> Auth -> IO (Maybe Value)
+audit = pamDo "audit"
 
-audit :: PN -> T.Text -> T.Text -> IO ()
-audit pn authK channel = do
-  let msg = signInput (sub_key pn) (pub_key pn) "1392660249"
-  print msg
-  let s = signature (sec_key pn) (L.fromStrict $ encodeUtf8 msg)
-  let req = buildRequest pn [ "v1"
-                            , "auth"
-                            , "audit"
-                            , "sub-key"
-                            , encodeUtf8 $ sub_key pn] [("signature", s), ("timestamp", "1392660249")] Nothing
-  print req
-  _ <- withManager $ httpLbs req
-  return ()
+grant :: PN -> Auth -> IO (Maybe Value)
+grant = pamDo "grant"
+
+auth :: PN -> T.Text -> PN
+auth pn k = pn{auth_key = (Just k)}
+
+pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
+pamDo pamMethod pn authR = do  
+  ts <- (bsFromInteger . round) <$> getPOSIXTime      
+  let req = buildRequest pn pamURI ((pamQS ts) ++ [("signature", signature ts)]) Nothing  
+  res <- withManager $ httpLbs req
+  return (decode $ responseBody res)  
   where
-    signature secret m = B.pack $ showDigest $ hmacSha256 (L.fromStrict $ encodeUtf8 secret) m
+    authK = T.intercalate "," $ authKeys authR
+    channel = fromJust $ chan authR
+    authRead = r authR
+    authWrite = w authR
+    
+    pubKey = encodeUtf8 $ pub_key pn
+    subKey = encodeUtf8 $ sub_key pn
+    secKey = L.fromStrict . encodeUtf8 $ sec_key pn
+        
+    signature ts = B64.encode . L.toStrict . bytestringDigest $ hmacSha256 secKey (msg ts)
 
-    signInput subKey pubKey t = T.intercalate T.empty [subKey, "\n", pubKey, "\n", "audit\n", "auth=", authK, "&channel=", channel, "&timestamp=", t]
+    msg ts = L.fromStrict $ B.intercalate B.empty [ subKey, "\n"
+                                                  , pubKey, "\n"
+                                                  , pamMethod, "\n"
+                                                  , B.tail $ renderSimpleQuery True $ pamQS ts]
 
+    pamURI = [ "v1"
+             , "auth"                            
+             , pamMethod
+             , "sub-key"
+             , subKey]
 
+    pamQS ts = [ ("auth", encodeUtf8 authK)
+               , ("channel", encodeUtf8 channel)
+               , ("r", if authRead then "1" else "0")
+               , ("timestamp", ts)
+               , ("w", if authWrite then "1" else "0")]
 
-grant :: PN -> Auth -> IO ()
-grant pn _ = do
-  let req = buildRequest pn [ "v1"
-                            , "auth"
-                            , "grant"
-                            , "sub-key"
-                            , encodeUtf8 $ sub_key pn] [] Nothing
-  _ <- withManager $ httpLbs req
-  return ()
-
-auth :: PN -> IO ()
-auth _ = do
-  return ()
 
 -- internal functions
+userIdOptions :: PN -> [(B.ByteString, B.ByteString)]
+userIdOptions pn =
+  (maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn)) ++
+  (maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn))
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
 buildRequest pn elems qs timeout =
@@ -273,7 +292,7 @@ buildRequest pn elems qs timeout =
       , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString     = renderSimpleQuery True qs
+      , queryString     = renderSimpleQuery True qs      
       , secure          = ssl pn
       , responseTimeout = Just (maybe 5000000 (* 1000000) timeout) }
 

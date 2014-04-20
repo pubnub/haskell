@@ -49,6 +49,8 @@ data PN = PN { origin         :: T.Text
              , pub_key        :: T.Text
              , sub_key        :: T.Text
              , sec_key        :: T.Text
+             , uuid_key       :: Maybe UUID
+             , auth_key       :: Maybe T.Text
              , channels       :: [T.Text]
              , jsonp_callback :: Integer
              , time_token     :: Timestamp
@@ -62,6 +64,8 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , pub_key        = T.empty
                , sub_key        = T.empty
                , sec_key        = "0"
+               , uuid_key       = Nothing
+               , auth_key       = Nothing
                , channels       = []
                , jsonp_callback = 0
                , time_token     = Timestamp 0
@@ -70,9 +74,7 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , iv             = makeIV (B.pack "0123456789012345")
                , ssl            = False }
 
-data SubscribeOptions a = SubscribeOptions { uid               :: Maybe UUID
-
-                                           , onMsg             :: a -> IO ()
+data SubscribeOptions a = SubscribeOptions { onMsg             :: a -> IO ()
                                            , onConnect         :: IO ()
                                            , onDisconnect      :: IO ()
                                            , onError           :: Maybe Int -> Maybe B.ByteString -> IO ()
@@ -84,9 +86,7 @@ data SubscribeOptions a = SubscribeOptions { uid               :: Maybe UUID
                                            , windowing         :: Maybe Integer }
 
 defaultSubscribeOptions :: SubscribeOptions a
-defaultSubscribeOptions = SubscribeOptions { uid               = Nothing
-
-                                           , onMsg             = \_ -> return ()
+defaultSubscribeOptions = SubscribeOptions { onMsg             = \_ -> return ()
                                            , onConnect         = return ()
                                            , onDisconnect      = return ()
                                            , onError           = \_ _ -> return ()
@@ -97,19 +97,19 @@ defaultSubscribeOptions = SubscribeOptions { uid               = Nothing
                                            , resumeOnReconnect = True
                                            , windowing         = Nothing }
 
-data Auth = Auth { chan    :: Maybe T.Text
-                 , authKey :: Maybe T.Text
-                 , r       :: Bool
-                 , w       :: Bool
-                 , ttl     :: Int }
+data Auth = Auth { chan     :: Maybe T.Text
+                 , authKeys :: [T.Text]
+                 , r        :: Bool
+                 , w        :: Bool
+                 , ttl      :: Int }
              deriving (Show)
 
 defaultAuth :: Auth
-defaultAuth = Auth { chan    = Nothing
-                   , authKey = Nothing
-                   , r       = False
-                   , w       = False
-                   , ttl     = 0 }
+defaultAuth = Auth { chan     = Nothing
+                   , authKeys = []
+                   , r        = False
+                   , w        = False
+                   , ttl      = 0 }
 
 setEncryptionKey :: PN -> B.ByteString -> Either KeyError PN
 setEncryptionKey pn key =

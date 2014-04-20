@@ -9,6 +9,7 @@ import Network.Pubnub.Types
 
 import GHC.Generics
 import Data.Aeson
+import Data.Maybe
 
 import Control.Concurrent.Async
 import Control.Monad
@@ -24,53 +25,45 @@ instance ToJSON Msg
 
 instance FromJSON Msg
 
-type ClientName = T.Text
-
-data Client = Client { clientName :: ClientName
-                     , pn         :: PN }
-
 main :: IO ()
 main = do
   putStrLn "Enter Username: "
   username <- I.getLine
   runClient $ newClient username True
 
-newClient :: ClientName -> Bool -> Client
+newClient :: T.Text -> Bool -> PN
 newClient name encrypt
-  | encrypt = either (error . show) (\x -> Client { clientName = name
-                                                  , pn         = x}) encKey
-  | otherwise       = Client { clientName = name
-                             , pn         = newPN}
+  | encrypt = either (error . show) (\x -> x{ uuid_key = (Just name) }) encKey
+  | otherwise       = newPN
   where
     encKey = setEncryptionKey newPN "enigma"
 
-    newPN  = defaultPN { channels = ["testchathaskell2"]
+    newPN  = defaultPN { uuid_key = (Just name)
+                       , channels = ["testchathaskell2"]
                        , sub_key  = "demo"
                        , pub_key  = "demo"
                        , ssl      = False }
 
-runClient :: Client -> IO ()
-runClient Client{..} = do
+runClient :: PN -> IO ()
+runClient pn = do
   a <- receiver
   withAsync (cli a) $ \b -> do
     _ <- waitAnyCancel [a, b]
     return ()
-  where
+  where          
     cli a = forever $ do
       msg <- I.getLine
       case msg of
         "/leave" -> do
-          leave pn (head $ channels pn) clientName
+          leave pn (head $ channels pn) (fromJust $ uuid_key pn)
           unsubscribe a
           mzero
         _ ->
-          publish pn (head $ channels pn) Msg { username=clientName
+          publish pn (head $ channels pn) Msg { username=(fromJust $ uuid_key pn)
                                               , msg=msg }
 
     receiver =
-      subscribe pn defaultSubscribeOptions{ uid = Just clientName
-
-                                          , onPresence = Just outputPresence
+      subscribe pn defaultSubscribeOptions{ onPresence = Just outputPresence
                                           , onMsg = output
                                           , onConnect = putStrLn "Connected..." }
 
