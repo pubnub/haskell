@@ -163,7 +163,7 @@ subscribeInternal pn subOpts =
 
 publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
-  let encoded_msg = head . L.toChunks $ encode msg
+  let encoded_msg = L.toStrict $ encode msg
   let sig = signature (sec_key pn) encoded_msg
   let req = buildRequest pn [ "publish"
                             , encodeUtf8 $ pub_key pn
