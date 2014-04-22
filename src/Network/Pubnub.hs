@@ -74,14 +74,14 @@ subscribe pn subOpts =
                   return a
 
 subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
-subscribeInternal pn subOpts =  
+subscribeInternal pn subOpts =
   async (withManagerSettings conduitManagerSettings $ \manager -> connect pn{time_token = Timestamp 0} manager False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
-      eres <- try $ httpLbs req manager 
+      eres <- try $ httpLbs req manager
       case eres of
-        Right res -> do                    
+        Right res -> do
           case decode $ responseBody res of
             Just (ConnectResponse ([], t)) -> do
               liftIO (if isReconnect
@@ -107,9 +107,9 @@ subscribeInternal pn subOpts =
         Right res -> do
           case (ctx pn', iv pn') of
             (Just c, Just i) -> do
-              responseBody res $$+- encryptedSubscribeSink c i                
+              responseBody res $$+- encryptedSubscribeSink c i
             (_, _) -> do
-              responseBody res $$+- subscribeSink                
+              responseBody res $$+- subscribeSink
           reconnect pn' manager
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
@@ -121,23 +121,23 @@ subscribeInternal pn subOpts =
           reconnect pn' manager
 
     encryptedSubscribeSink c i =
-      awaitForever $ (\x -> 
-                       case decode (L.fromStrict x) of                                   
+      awaitForever $ (\x ->
+                       case decode (L.fromStrict x) of
                          Just (EncryptedSubscribeResponse (resp, _)) -> do
                            _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
                            return ()
                          Nothing ->
-                           return ())            
+                           return ())
 
     subscribeSink =
-      awaitForever $ (\x -> 
+      awaitForever $ (\x ->
                        case decode (L.fromStrict x) of
                          Just (SubscribeResponse (resp, _)) -> do
                            _ <- liftIO $ mapM (onMsg subOpts) resp
                            return ()
                          Nothing ->
                            return ())
-      
+
     reconnect pn' manager = connect pn' manager True
 
     buildSubscribeRequest pn' tt =
@@ -253,21 +253,21 @@ auth :: PN -> T.Text -> PN
 auth pn k = pn{auth_key = (Just k)}
 
 pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
-pamDo pamMethod pn authR = do  
-  ts <- (bsFromInteger . round) <$> getPOSIXTime      
-  let req = buildRequest pn pamURI ((pamQS ts) ++ [("signature", signature ts)]) Nothing  
+pamDo pamMethod pn authR = do
+  ts <- (bsFromInteger . round) <$> getPOSIXTime
+  let req = buildRequest pn pamURI ((pamQS ts) ++ [("signature", signature ts)]) Nothing
   res <- withManager $ httpLbs req
-  return (decode $ responseBody res)  
+  return (decode $ responseBody res)
   where
     authK = T.intercalate "," $ authKeys authR
     channel = fromJust $ chan authR
     authRead = r authR
     authWrite = w authR
-    
+
     pubKey = encodeUtf8 $ pub_key pn
     subKey = encodeUtf8 $ sub_key pn
     secKey = L.fromStrict . encodeUtf8 $ sec_key pn
-        
+
     signature ts = B64.encode . L.toStrict . bytestringDigest $ hmacSha256 secKey (msg ts)
 
     msg ts = L.fromStrict $ B.intercalate B.empty [ subKey, "\n"
@@ -276,7 +276,7 @@ pamDo pamMethod pn authR = do
                                                   , B.tail $ renderSimpleQuery True $ pamQS ts]
 
     pamURI = [ "v1"
-             , "auth"                            
+             , "auth"
              , pamMethod
              , "sub-key"
              , subKey]
@@ -303,7 +303,7 @@ buildRequest pn elems qs timeout =
       , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString     = renderSimpleQuery True qs      
+      , queryString     = renderSimpleQuery True qs
       , secure          = ssl pn
       , responseTimeout = Just (maybe 5000000 (* 1000000) timeout) }
 
