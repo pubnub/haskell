@@ -101,7 +101,7 @@ subscribeInternal pn subOpts =
           connect pn' manager isReconnect
 
     subscribe' manager pn' = do
-      let req = buildSubscribeRequest pn' $ head . L.toChunks $ encode (time_token pn')
+      let req = buildSubscribeRequest pn' $ L.toStrict $ encode (time_token pn')
       eres <- try $ http req manager
       case eres of
         Right res -> do
