@@ -22,9 +22,10 @@ library
   -- other-extensions:
   build-depends:        base >=4.6 && <4.7
                         , aeson >= 0.7.0.0
+                        , conduit >= 1.1.0.2
+                        , conduit-extra >= 1.1.0
                         , http-conduit >= 2.0.0.3
-                        , http-client >= 0.2.0.3
-                        , conduit >= 1.0.9.3
+                        , http-client >= 0.2.0.3                        
                         , bytestring >= 0.10.0.2
                         , transformers >= 0.3.0.0
                         , vector >= 0.10.9.1
@@ -39,7 +40,7 @@ library
                         , cipher-aes >= 0.2.6
                         , crypto-api >= 0.12.2.2
                         , crypto-cipher-types >= 0.0.9
-                        , base64-bytestring >= 1.0.0.1
+                        , base64-bytestring >= 1.0.0.1                        
                         , time >= 1.4.0.1
   ghc-options:          -Wall
   hs-source-dirs:       src
@@ -95,4 +96,4 @@ test-suite Tests
                         , tasty
                         , tasty-hunit
                         , tasty-quickcheck
-                        , tasty-smallcheck
+                        , tasty-smallcheck                        

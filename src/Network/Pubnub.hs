@@ -31,6 +31,8 @@ import Data.Aeson
 import Data.UUID.V4
 import Network.HTTP.Conduit
 import Network.HTTP.Types
+import Data.Conduit
+
 import Control.Monad.Trans
 import Control.Concurrent.Async
 import Control.Applicative ((<$>))
@@ -72,14 +74,14 @@ subscribe pn subOpts =
                   return a
 
 subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
-subscribeInternal pn subOpts =
-  async (withManager $ \manager -> lift $ connect pn{time_token = Timestamp 0} manager False)
+subscribeInternal pn subOpts =  
+  async (withManagerSettings conduitManagerSettings $ \manager -> connect pn{time_token = Timestamp 0} manager False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
-      eres <- try $ httpLbs req manager :: IO (Either HttpException (Response L.ByteString))
+      eres <- try $ httpLbs req manager 
       case eres of
-        Right res ->
+        Right res -> do                    
           case decode $ responseBody res of
             Just (ConnectResponse ([], t)) -> do
               liftIO (if isReconnect
@@ -100,24 +102,15 @@ subscribeInternal pn subOpts =
 
     subscribe' manager pn' = do
       let req = buildSubscribeRequest pn' $ head . L.toChunks $ encode (time_token pn')
-      eres <- try $ httpLbs req manager :: IO (Either HttpException (Response L.ByteString))
+      eres <- try $ http req manager
       case eres of
-        Right res ->
+        Right res -> do
           case (ctx pn', iv pn') of
-            (Just c, Just i) ->
-              case decode $ responseBody res of
-                Just (EncryptedSubscribeResponse (resp, t)) -> do
-                  _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
-                  subscribe' manager (pn' { time_token=t })
-                Nothing ->
-                  subscribe' manager pn'
-            (_, _) ->
-              case decode $ responseBody res of
-                Just (SubscribeResponse (resp, t)) -> do
-                  _ <- liftIO $ mapM (onMsg subOpts) resp
-                  subscribe' manager (pn' { time_token=t })
-                Nothing ->
-                  subscribe' manager pn'
+            (Just c, Just i) -> do
+              responseBody res $$+- encryptedSubscribeSink c i                
+            (_, _) -> do
+              responseBody res $$+- subscribeSink                
+          reconnect pn' manager
         Left (ResponseTimeout :: HttpException) ->
           subscribe' manager pn'
         Left (StatusCodeException (Status code msg) _ _) -> do
@@ -127,10 +120,28 @@ subscribeInternal pn subOpts =
           liftIO $ onError subOpts Nothing Nothing
           reconnect pn' manager
 
+    encryptedSubscribeSink c i =
+      awaitForever $ (\x -> 
+                       case decode (L.fromStrict x) of                                   
+                         Just (EncryptedSubscribeResponse (resp, _)) -> do
+                           _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
+                           return ()
+                         Nothing ->
+                           return ())            
+
+    subscribeSink =
+      awaitForever $ (\x -> 
+                       case decode (L.fromStrict x) of
+                         Just (SubscribeResponse (resp, _)) -> do
+                           _ <- liftIO $ mapM (onMsg subOpts) resp
+                           return ()
+                         Nothing ->
+                           return ())
+      
     reconnect pn' manager = connect pn' manager True
 
     buildSubscribeRequest pn' tt =
-      buildRequest pn' [ "subscribe"
+      buildRequest pn' [ "stream"
                        , encodeUtf8 $ sub_key pn'
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
