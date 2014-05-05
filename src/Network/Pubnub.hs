@@ -81,7 +81,7 @@ subscribeInternal pn subOpts =
       let req = buildSubscribeRequest pn' "0"
       eres <- try $ httpLbs req manager
       case eres of
-        Right res -> do
+        Right res ->
           case decode $ responseBody res of
             Just (ConnectResponse ([], t)) -> do
               liftIO (if isReconnect
@@ -106,9 +106,9 @@ subscribeInternal pn subOpts =
       case eres of
         Right res -> do
           case (ctx pn', iv pn') of
-            (Just c, Just i) -> do
+            (Just c, Just i) ->
               responseBody res $$+- encryptedSubscribeSink c i
-            (_, _) -> do
+            (_, _) ->
               responseBody res $$+- subscribeSink
           reconnect pn' manager
         Left (ResponseTimeout :: HttpException) ->
@@ -121,7 +121,7 @@ subscribeInternal pn subOpts =
           reconnect pn' manager
 
     encryptedSubscribeSink c i =
-      awaitForever $ (\x ->
+      awaitForever (\x ->
                        case decode (L.fromStrict x) of
                          Just (EncryptedSubscribeResponse (resp, _)) -> do
                            _ <- liftIO $ mapM (onMsg subOpts . decodeEncrypted c i) resp
@@ -130,7 +130,7 @@ subscribeInternal pn subOpts =
                            return ())
 
     subscribeSink =
-      awaitForever $ (\x ->
+      awaitForever (\x ->
                        case decode (L.fromStrict x) of
                          Just (SubscribeResponse (resp, _)) -> do
                            _ <- liftIO $ mapM (onMsg subOpts) resp
@@ -215,8 +215,7 @@ history pn channel options = do
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel]
-            ((convertHistoryOptions options) ++
-             (userIdOptions pn))
+            (convertHistoryOptions options ++ userIdOptions pn)
             Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
@@ -250,12 +249,12 @@ grant :: PN -> Auth -> IO (Maybe Value)
 grant = pamDo "grant"
 
 auth :: PN -> T.Text -> PN
-auth pn k = pn{auth_key = (Just k)}
+auth pn k = pn{auth_key = Just k}
 
 pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
 pamDo pamMethod pn authR = do
   ts <- (bsFromInteger . round) <$> getPOSIXTime
-  let req = buildRequest pn pamURI ((pamQS ts) ++ [("signature", signature ts)]) Nothing
+  let req = buildRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
   res <- withManager $ httpLbs req
   return (decode $ responseBody res)
   where
@@ -291,8 +290,8 @@ pamDo pamMethod pn authR = do
 -- internal functions
 userIdOptions :: PN -> [(B.ByteString, B.ByteString)]
 userIdOptions pn =
-  (maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn)) ++
-  (maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn))
+  maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn) ++
+  maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn)
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
 buildRequest pn elems qs timeout =

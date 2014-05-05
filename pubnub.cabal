@@ -2,7 +2,7 @@
 -- see http://haskell.org/cabal/users-guide/
 
 name:                   pubnub
-version:                1.1.0
+version:                1.1.1
 synopsis:               PubNub Haskell SDK
 description:            The PubNub Network makes Real-time easy with a Simple Communications API. Two Functions: Send and Receive (Publish and Subscribe). We provide a web-service API for businesses to build scalable Data Push communication apps on Mobile, Tablet and Web. Bidirectional JSON.
 homepage:               http://github.com/pubnub/haskell
@@ -10,16 +10,13 @@ license:                MIT
 license-file:           LICENSE
 author:                 Tristan Sloughter
 maintainer:             t@crashfast.com
--- copyright:
 category:               Cloud, API
 build-type:             Simple
--- extra-source-files:
 cabal-version:          >=1.10
 
 library
   exposed-modules:      Network.Pubnub, Network.Pubnub.Types
-  -- other-modules:
-  -- other-extensions:
+
   build-depends:        base >=4.6 && <4.7
                         , aeson >= 0.7.0.0
                         , conduit >= 1.1.0.2
