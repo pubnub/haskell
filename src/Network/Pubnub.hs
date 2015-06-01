@@ -133,7 +133,7 @@ subscribeInternal pn subOpts =
       awaitForever (\x ->
                        case decode (L.fromStrict x) of
                          Just (SubscribeResponse (resp, _)) -> do
-                           _ <- liftIO $ mapM (onMsg subOpts) resp
+                           _ <- liftIO $ mapM (onMsg subOpts) (resp ++ [])
                            return ()
                          Nothing ->
                            return ())
