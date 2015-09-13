@@ -30,7 +30,7 @@ module Network.Pubnub.Types
 
 import GHC.Generics
 
-import Control.Applicative ((<$>), pure, empty)
+import Control.Applicative (empty)
 import Data.Text.Read
 import Data.Aeson
 import Data.Aeson.TH
@@ -141,7 +141,7 @@ data PublishResponse = PublishResponse Integer String Timestamp
 
 instance FromJSON PublishResponse
 
-data SubscribeResponse a = SubscribeResponse (a, Timestamp)
+data SubscribeResponse a = SubscribeResponse ([a], Timestamp)
                          deriving (Show, Generic)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
