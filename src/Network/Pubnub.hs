@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Pubnub
@@ -23,38 +23,38 @@ module Network.Pubnub
        , auth
        , grant
        ) where
+import           Control.Monad.Trans.Resource
+import           Network.Pubnub.Types
 
-import Network.Pubnub.Types
+import           Data.Aeson
+import           Data.Conduit                 hiding (connect)
+import           Data.UUID.V4
+import           Network.HTTP.Conduit
+import           Network.HTTP.Types
 
-import Data.Default (def)
-import Data.Aeson
-import Data.UUID.V4
-import Network.HTTP.Conduit
-import Network.HTTP.Types
-import Data.Conduit
+import           Control.Applicative          ((<$>))
+import           Control.Concurrent.Async
+import           Control.Exception.Lifted     (try)
+import           Control.Monad.Trans
+import           Data.Maybe
+import           Data.Text.Encoding
+import           Data.Time.Clock.POSIX
 
-import Control.Monad.Trans
-import Control.Concurrent.Async
-import Control.Applicative ((<$>))
-import Control.Exception.Lifted (try)
-import Data.Text.Encoding
-import Data.Maybe
-import Data.Time.Clock.POSIX
+import           Crypto.Cipher.AES
+import           Crypto.Padding
+import           Data.Digest.Pure.SHA
 
-import Data.Digest.Pure.SHA
-import Crypto.Cipher.AES
-import Crypto.Padding
-
-import qualified Data.Text as T
-import qualified Data.UUID as U
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString.Base64 as B64
+import qualified Data.ByteString.Base64       as B64
+import qualified Data.ByteString.Char8        as B
+import qualified Data.ByteString.Lazy         as L
+import qualified Data.Text                    as T
+import qualified Data.UUID                    as U
 
 time :: IO (Maybe Timestamp)
 time = do
-  let req = buildRequest defaultPN ["time", "0"] [] Nothing
-  res <- withManager $ httpLbs req
+  pn <- defaultPN
+  let req = buildRequest pn ["time", "0"] [] Nothing
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res :: Maybe Timestamp)
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
@@ -75,7 +75,7 @@ subscribe pn subOpts =
 
 subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
 subscribeInternal pn subOpts =
-  async (withManagerSettings conduitManagerSettings $ \manager -> connect pn{time_token = Timestamp 0} manager False)
+  async (runResourceT $ connect pn{time_token = Timestamp 0} (pnManager pn) False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
@@ -93,12 +93,15 @@ subscribeInternal pn subOpts =
             _ -> do
               liftIO (onDisconnect subOpts)
               subscribe' manager pn
-        Left (StatusCodeException (Status code msg) _ _) -> do
+        Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
+          let status = responseStatus res
+          let code = statusCode status
+          let msg  = statusMessage status
           liftIO $ onError subOpts (Just code) (Just msg)
           connect pn' manager isReconnect
         Left _ -> do
           liftIO $ onError subOpts Nothing Nothing
-          connect pn' manager isReconnect
+          reconnect pn' manager
 
     subscribe' manager pn' = do
       let req = buildSubscribeRequest pn' $ L.toStrict $ encode (time_token pn')
@@ -111,9 +114,12 @@ subscribeInternal pn subOpts =
             (_, _) ->
               responseBody res $$+- subscribeSink
           reconnect pn' manager
-        Left (ResponseTimeout :: HttpException) ->
+        Left (HttpExceptionRequest _ ResponseTimeout) ->
           subscribe' manager pn'
-        Left (StatusCodeException (Status code msg) _ _) -> do
+        Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
+          let status = responseStatus res
+          let code = statusCode status
+          let msg  = statusMessage status
           liftIO $ onError subOpts (Just code) (Just msg)
           reconnect pn' manager
         Left _ -> do
@@ -159,7 +165,7 @@ subscribeInternal pn subOpts =
     decodeJson :: T.Text -> B.ByteString
     decodeJson s = case decode (L.fromStrict (encodeUtf8 s)) of
                        Nothing -> encodeUtf8 s
-                       Just l -> encodeUtf8 l
+                       Just l  -> encodeUtf8 l
 
 publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
@@ -174,7 +180,8 @@ publish pn channel msg = do
                             , encrypt (ctx pn) (iv pn) encoded_msg]
             (userIdOptions pn)
             Nothing
-  res <- withManager $ httpLbs req
+
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
     signature "0"    _ = "0"
@@ -194,7 +201,7 @@ hereNow pn channel = do
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel] [] Nothing
-  res <- withManager $ httpLbs req
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
 
 presence :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
@@ -217,7 +224,7 @@ history pn channel options = do
                             , encodeUtf8 channel]
             (convertHistoryOptions options ++ userIdOptions pn)
             Nothing
-  res <- withManager $ httpLbs req
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
 
 leave :: PN -> T.Text -> UUID -> IO ()
@@ -229,7 +236,7 @@ leave pn channel u = do
                             , "channel"
                             , encodeUtf8 channel
                             , "leave"] [("uuid", encodeUtf8 u)] Nothing
-  _ <- withManager $ httpLbs req
+  _ <- httpLbs req (pnManager pn)
   return ()
 
 getUuid :: IO UUID
@@ -255,7 +262,7 @@ pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
 pamDo pamMethod pn authR = do
   ts <- (bsFromInteger . round) <$> getPOSIXTime
   let req = buildRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
-  res <- withManager $ httpLbs req
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
     authK = T.intercalate "," $ authKeys authR
@@ -295,7 +302,8 @@ userIdOptions pn =
 
 buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
 buildRequest pn elems qs timeout =
-  def { host            = encodeUtf8 $ origin pn
+  defaultRequest
+      { host            = encodeUtf8 $ origin pn
       , path            = B.intercalate "/" elems
       , method          = "GET"
       , port            = if ssl pn then 443 else 80
@@ -304,7 +312,7 @@ buildRequest pn elems qs timeout =
                          , ("Accept", "*/*")]
       , queryString     = renderSimpleQuery True qs
       , secure          = ssl pn
-      , responseTimeout = Just (maybe 5000000 (* 1000000) timeout) }
+      , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout) }
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
