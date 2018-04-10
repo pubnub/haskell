@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Pubnub
@@ -17,44 +17,48 @@ module Network.Pubnub
        , leave
        , getUuid
        , unsubscribe
+       , channelGroupList
+       , channelGroupAddChannel
+       , channelGroupRemoveChannel
+       , channelGroupDeleteGroup
 
          -- PAM API functions
        , audit
        , auth
        , grant
        ) where
+import           Control.Monad.Trans.Resource
+import           Network.Pubnub.Types
 
-import Network.Pubnub.Types
+import           Data.Aeson
+import           Data.Conduit                 hiding (connect)
+import           Data.UUID.V4
+import           Network.HTTP.Conduit
+import           Network.HTTP.Types
 
-import Data.Default (def)
-import Data.Aeson
-import Data.UUID.V4
-import Network.HTTP.Conduit
-import Network.HTTP.Types
-import Data.Conduit
+import           Control.Applicative          ((<$>))
+import           Control.Concurrent.Async
+import           Control.Exception.Lifted     (try)
+import           Control.Monad.Trans
+import           Data.Maybe
+import           Data.Text.Encoding
+import           Data.Time.Clock.POSIX
 
-import Control.Monad.Trans
-import Control.Concurrent.Async
-import Control.Applicative ((<$>))
-import Control.Exception.Lifted (try)
-import Data.Text.Encoding
-import Data.Maybe
-import Data.Time.Clock.POSIX
+import           Crypto.Cipher.AES
+import           Crypto.Padding
+import           Data.Digest.Pure.SHA
 
-import Data.Digest.Pure.SHA
-import Crypto.Cipher.AES
-import Crypto.Padding
-
-import qualified Data.Text as T
-import qualified Data.UUID as U
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
-import qualified Data.ByteString.Base64 as B64
+import qualified Data.ByteString.Base64       as B64
+import qualified Data.ByteString.Char8        as B
+import qualified Data.ByteString.Lazy         as L
+import qualified Data.Text                    as T
+import qualified Data.UUID                    as U
 
 time :: IO (Maybe Timestamp)
 time = do
-  let req = buildRequest defaultPN ["time", "0"] [] Nothing
-  res <- withManager $ httpLbs req
+  pn <- defaultPN
+  let req = buildGetRequest pn ["time", "0"] [] Nothing
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res :: Maybe Timestamp)
 
 subscribe :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
@@ -75,7 +79,7 @@ subscribe pn subOpts =
 
 subscribeInternal :: (FromJSON b) => PN -> SubscribeOptions b -> IO (Async ())
 subscribeInternal pn subOpts =
-  async (withManagerSettings conduitManagerSettings $ \manager -> connect pn{time_token = Timestamp 0} manager False)
+  async (runResourceT $ connect pn{time_token = Timestamp 0} (pnManager pn) False)
   where
     connect pn' manager isReconnect = do
       let req = buildSubscribeRequest pn' "0"
@@ -93,12 +97,15 @@ subscribeInternal pn subOpts =
             _ -> do
               liftIO (onDisconnect subOpts)
               subscribe' manager pn
-        Left (StatusCodeException (Status code msg) _ _) -> do
+        Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
+          let status = responseStatus res
+          let code = statusCode status
+          let msg  = statusMessage status
           liftIO $ onError subOpts (Just code) (Just msg)
           connect pn' manager isReconnect
         Left _ -> do
           liftIO $ onError subOpts Nothing Nothing
-          connect pn' manager isReconnect
+          reconnect pn' manager
 
     subscribe' manager pn' = do
       let req = buildSubscribeRequest pn' $ L.toStrict $ encode (time_token pn')
@@ -111,9 +118,12 @@ subscribeInternal pn subOpts =
             (_, _) ->
               responseBody res $$+- subscribeSink
           reconnect pn' manager
-        Left (ResponseTimeout :: HttpException) ->
+        Left (HttpExceptionRequest _ ResponseTimeout) ->
           subscribe' manager pn'
-        Left (StatusCodeException (Status code msg) _ _) -> do
+        Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
+          let status = responseStatus res
+          let code = statusCode status
+          let msg  = statusMessage status
           liftIO $ onError subOpts (Just code) (Just msg)
           reconnect pn' manager
         Left _ -> do
@@ -141,7 +151,7 @@ subscribeInternal pn subOpts =
     reconnect pn' manager = connect pn' manager True
 
     buildSubscribeRequest pn' tt =
-      buildRequest pn' [ "stream"
+      buildGetRequest pn' [ "stream"
                        , encodeUtf8 $ sub_key pn'
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
@@ -159,22 +169,24 @@ subscribeInternal pn subOpts =
     decodeJson :: T.Text -> B.ByteString
     decodeJson s = case decode (L.fromStrict (encodeUtf8 s)) of
                        Nothing -> encodeUtf8 s
-                       Just l -> encodeUtf8 l
+                       Just l  -> encodeUtf8 l
 
 publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
   let encoded_msg = L.toStrict $ encode msg
   let sig = signature (sec_key pn) encoded_msg
-  let req = buildRequest pn [ "publish"
+  let req = buildPostRequest pn [ "publish"
                             , encodeUtf8 $ pub_key pn
                             , encodeUtf8 $ sub_key pn
                             , sig
                             , encodeUtf8 channel
                             , bsFromInteger $ jsonp_callback pn
-                            , encrypt (ctx pn) (iv pn) encoded_msg]
+                            ]
+            (encrypt (ctx pn) (iv pn) encoded_msg)
             (userIdOptions pn)
             Nothing
-  res <- withManager $ httpLbs req
+
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
     signature "0"    _ = "0"
@@ -188,13 +200,13 @@ publish pn channel msg = do
 
 hereNow :: PN -> T.Text -> IO (Maybe HereNow)
 hereNow pn channel = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel] [] Nothing
-  res <- withManager $ httpLbs req
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
 
 presence :: (FromJSON b) => PN -> Maybe UUID -> (b -> IO ()) -> IO (Async ())
@@ -209,7 +221,7 @@ presence pn u fn =
 
 history :: FromJSON b => PN -> T.Text -> HistoryOptions -> IO (Maybe (History b))
 history pn channel options = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "history"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
@@ -217,19 +229,63 @@ history pn channel options = do
                             , encodeUtf8 channel]
             (convertHistoryOptions options ++ userIdOptions pn)
             Nothing
-  res <- withManager $ httpLbs req
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
+
+channelGroupList :: FromJSON b => PN -> T.Text -> IO (Maybe (ChannelGroup b))
+channelGroupList pn group = do
+  let req = buildGetRequest pn [ "v1"
+                               , "channel-registration"
+                               , "sub-key"
+                               , encodeUtf8 $ sub_key pn
+                               , "channel-group"
+                               , encodeUtf8 group
+                               ]
+            (userIdOptions pn)
+            Nothing
+  res <- httpLbs req (pnManager pn)
+  return (decode $ responseBody res)
+
+channelGroupAddChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupAddChannel = channelGroupDo "add"
+
+channelGroupRemoveChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupRemoveChannel = channelGroupDo "remove"
+
+channelGroupDeleteGroup :: PN -> T.Text -> IO (Maybe ChannelGroupResponse)
+channelGroupDeleteGroup pn group = channelGroupDo "remove" pn group []
+
+channelGroupDo :: T.Text -> PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupDo action' pn group chs  = do
+  let req = buildGetRequest pn [ "v1"
+                               , "channel-registration"
+                               , "sub-key"
+                               , encodeUtf8 $ sub_key pn
+                               , "channel-group"
+                               , encodeUtf8 group
+                               ]
+            (channelOptions ++ userIdOptions pn)
+            Nothing
+  res <- httpLbs req (pnManager pn)
+  return (decode $ responseBody res)
+  where
+    channelOptions ::[(B.ByteString, Maybe B.ByteString)]
+    channelOptions
+      -- delete groupChannel
+      | null chs && action' == "remove" = [("remove", Nothing)]
+      -- add/remove channels from channel group
+      | otherwise = map (\g -> (encodeUtf8 action', Just $ encodeUtf8 g)) chs
 
 leave :: PN -> T.Text -> UUID -> IO ()
 leave pn channel u = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel
-                            , "leave"] [("uuid", encodeUtf8 u)] Nothing
-  _ <- withManager $ httpLbs req
+                            , "leave"] [("uuid", Just $ encodeUtf8 u)] Nothing
+  _ <- httpLbs req (pnManager pn)
   return ()
 
 getUuid :: IO UUID
@@ -254,8 +310,8 @@ auth pn k = pn{auth_key = Just k}
 pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
 pamDo pamMethod pn authR = do
   ts <- (bsFromInteger . round) <$> getPOSIXTime
-  let req = buildRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
-  res <- withManager $ httpLbs req
+  let req = buildGetRequest pn pamURI (pamQS ts ++ [("signature", Just $ signature ts)]) Nothing
+  res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
     authK = T.intercalate "," $ authKeys authR
@@ -272,7 +328,7 @@ pamDo pamMethod pn authR = do
     msg ts = L.fromStrict $ B.intercalate B.empty [ subKey, "\n"
                                                   , pubKey, "\n"
                                                   , pamMethod, "\n"
-                                                  , B.tail $ renderSimpleQuery True $ pamQS ts]
+                                                  , B.tail $ renderQuery True $ pamQS ts]
 
     pamURI = [ "v1"
              , "auth"
@@ -280,31 +336,49 @@ pamDo pamMethod pn authR = do
              , "sub-key"
              , subKey]
 
-    pamQS ts = [ ("auth", encodeUtf8 authK)
-               , ("channel", encodeUtf8 channel)
-               , ("r", if authRead then "1" else "0")
-               , ("timestamp", ts)
-               , ("w", if authWrite then "1" else "0")]
+    pamQS ts = [ ("auth"     , Just $ encodeUtf8 authK)
+               , ("channel"  , Just $ encodeUtf8 channel)
+               , ("r"        , Just $ if authRead then "1" else "0")
+               , ("timestamp", Just   ts)
+               , ("w"        , Just $ if authWrite then "1" else "0")]
 
 
 -- internal functions
-userIdOptions :: PN -> [(B.ByteString, B.ByteString)]
+userIdOptions :: PN -> [(B.ByteString, Maybe B.ByteString)]
 userIdOptions pn =
-  maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn) ++
-  maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn)
+  maybe [] (\u -> [("uuid", Just $ encodeUtf8 u)]) (uuid_key pn) ++
+  maybe [] (\a -> [("auth", Just $ encodeUtf8 a)]) (auth_key pn)
 
-buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
-buildRequest pn elems qs timeout =
-  def { host            = encodeUtf8 $ origin pn
+buildGetRequest :: PN -> [B.ByteString] -> Query -> Maybe Int -> Request
+buildGetRequest pn elems qs timeout =
+  defaultRequest
+      { host            = encodeUtf8 $ origin pn
       , path            = B.intercalate "/" elems
       , method          = "GET"
       , port            = if ssl pn then 443 else 80
       , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString     = renderSimpleQuery True qs
+      , queryString     = renderQuery True qs
       , secure          = ssl pn
-      , responseTimeout = Just (maybe 5000000 (* 1000000) timeout) }
+      , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout) }
+
+buildPostRequest :: PN -> [B.ByteString] -> B.ByteString -> Query -> Maybe Int -> Request
+buildPostRequest pn elems body qs timeout =
+  defaultRequest
+      { host            = encodeUtf8 $ origin pn
+      , path            = B.intercalate "/" elems
+      , method          = "POST"
+      , port            = if ssl pn then 443 else 80
+      , requestHeaders  = [ ("V", "3.1")
+                         , ("User-Agent", "Haskell")
+                         , ("Accept", "*/*")]
+      , queryString     = renderQuery True qs
+      , secure          = ssl pn
+      , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout)
+      , requestBody = RequestBodyBS body
+      }
+
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
