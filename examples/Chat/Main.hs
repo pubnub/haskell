@@ -1,21 +1,21 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
-import Network.Pubnub
-import Network.Pubnub.Types
+import           Network.Pubnub
+import           Network.Pubnub.Types
 
-import GHC.Generics
-import Data.Aeson
-import Data.Maybe
+import           Data.Aeson
+import           Data.Maybe
+import           GHC.Generics
 
-import Control.Concurrent.Async
-import Control.Monad
-import qualified Data.Text.IO as I
-import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as L
+import           Control.Concurrent.Async
+import           Control.Monad
+import qualified Data.ByteString.Lazy     as L
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as I
 
 data Msg = Msg { username :: T.Text
                , msg      :: T.Text }
@@ -29,20 +29,26 @@ main :: IO ()
 main = do
   putStrLn "Enter Username: "
   username <- I.getLine
-  runClient $ newClient username True
+  pn <- newClient username True
+  runClient pn
 
-newClient :: T.Text -> Bool -> PN
+newClient :: T.Text -> Bool -> IO PN
 newClient name encrypt
-  | encrypt = either (error . show) (\x -> x{ uuid_key = (Just name) }) encKey
+  | encrypt = either (error . show) (\x -> x{ uuid_key = Just name }) <$> encKey
   | otherwise       = newPN
   where
-    encKey = setEncryptionKey newPN "enigma"
+    encKey = do
+                pn <- newPN
+                return $ setEncryptionKey pn "enigma"
 
-    newPN  = defaultPN { uuid_key = (Just name)
-                       , channels = ["testchathaskell2"]
-                       , sub_key  = "demo"
-                       , pub_key  = "demo"
-                       , ssl      = False }
+    newPN  = do
+                pn <- defaultPN
+                return pn { uuid_key = Just name
+                          , channels = ["testchathaskell2"]
+                          , sub_key  = "demo"
+                          , pub_key  = "demo"
+                          , ssl      = False
+                          }
 
 runClient :: PN -> IO ()
 runClient pn = do
@@ -50,7 +56,7 @@ runClient pn = do
   withAsync (cli a) $ \b -> do
     _ <- waitAnyCancel [a, b]
     return ()
-  where          
+  where
     cli a = forever $ do
       msg <- I.getLine
       case msg of
@@ -59,7 +65,7 @@ runClient pn = do
           unsubscribe a
           mzero
         _ ->
-          publish pn (head $ channels pn) Msg { username=(fromJust $ uuid_key pn)
+          publish pn (head $ channels pn) Msg { username = fromJust $ uuid_key pn
                                               , msg=msg }
 
     receiver =
