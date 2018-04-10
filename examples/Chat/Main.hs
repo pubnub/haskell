@@ -29,7 +29,7 @@ main :: IO ()
 main = do
   putStrLn "Enter Username: "
   username <- I.getLine
-  pn <- newClient username True
+  pn <- newClient username False
   runClient pn
 
 newClient :: T.Text -> Bool -> IO PN

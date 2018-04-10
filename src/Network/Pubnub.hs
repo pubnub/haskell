@@ -53,7 +53,7 @@ import qualified Data.UUID                    as U
 time :: IO (Maybe Timestamp)
 time = do
   pn <- defaultPN
-  let req = buildRequest pn ["time", "0"] [] Nothing
+  let req = buildGetRequest pn ["time", "0"] [] Nothing
   res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res :: Maybe Timestamp)
 
@@ -147,7 +147,7 @@ subscribeInternal pn subOpts =
     reconnect pn' manager = connect pn' manager True
 
     buildSubscribeRequest pn' tt =
-      buildRequest pn' [ "stream"
+      buildGetRequest pn' [ "stream"
                        , encodeUtf8 $ sub_key pn'
                        , encodeUtf8 $ T.intercalate "," (channels pn')
                        , bsFromInteger $ jsonp_callback pn'
@@ -171,13 +171,14 @@ publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
   let encoded_msg = L.toStrict $ encode msg
   let sig = signature (sec_key pn) encoded_msg
-  let req = buildRequest pn [ "publish"
+  let req = buildPostRequest pn [ "publish"
                             , encodeUtf8 $ pub_key pn
                             , encodeUtf8 $ sub_key pn
                             , sig
                             , encodeUtf8 channel
                             , bsFromInteger $ jsonp_callback pn
-                            , encrypt (ctx pn) (iv pn) encoded_msg]
+                            ]
+            (encrypt (ctx pn) (iv pn) encoded_msg)
             (userIdOptions pn)
             Nothing
 
@@ -195,7 +196,7 @@ publish pn channel msg = do
 
 hereNow :: PN -> T.Text -> IO (Maybe HereNow)
 hereNow pn channel = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
@@ -216,7 +217,7 @@ presence pn u fn =
 
 history :: FromJSON b => PN -> T.Text -> HistoryOptions -> IO (Maybe (History b))
 history pn channel options = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "history"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
@@ -229,7 +230,7 @@ history pn channel options = do
 
 leave :: PN -> T.Text -> UUID -> IO ()
 leave pn channel u = do
-  let req = buildRequest pn [ "v2"
+  let req = buildGetRequest pn [ "v2"
                             , "presence"
                             , "sub-key"
                             , encodeUtf8 $ sub_key pn
@@ -261,7 +262,7 @@ auth pn k = pn{auth_key = Just k}
 pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
 pamDo pamMethod pn authR = do
   ts <- (bsFromInteger . round) <$> getPOSIXTime
-  let req = buildRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
+  let req = buildGetRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
   res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
@@ -300,8 +301,8 @@ userIdOptions pn =
   maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn) ++
   maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn)
 
-buildRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
-buildRequest pn elems qs timeout =
+buildGetRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
+buildGetRequest pn elems qs timeout =
   defaultRequest
       { host            = encodeUtf8 $ origin pn
       , path            = B.intercalate "/" elems
@@ -313,6 +314,23 @@ buildRequest pn elems qs timeout =
       , queryString     = renderSimpleQuery True qs
       , secure          = ssl pn
       , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout) }
+
+buildPostRequest :: PN -> [B.ByteString] -> B.ByteString -> SimpleQuery -> Maybe Int -> Request
+buildPostRequest pn elems body qs timeout =
+  defaultRequest
+      { host            = encodeUtf8 $ origin pn
+      , path            = B.intercalate "/" elems
+      , method          = "POST"
+      , port            = if ssl pn then 443 else 80
+      , requestHeaders  = [ ("V", "3.1")
+                         , ("User-Agent", "Haskell")
+                         , ("Accept", "*/*")]
+      , queryString     = renderSimpleQuery True qs
+      , secure          = ssl pn
+      , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout)
+      , requestBody = RequestBodyBS body
+      }
+
 
 bsFromInteger :: Integer -> B.ByteString
 bsFromInteger = B.pack . show
