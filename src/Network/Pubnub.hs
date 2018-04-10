@@ -17,6 +17,10 @@ module Network.Pubnub
        , leave
        , getUuid
        , unsubscribe
+       , channelGroupList
+       , channelGroupAddChannel
+       , channelGroupRemoveChannel
+       , channelGroupDeleteGroup
 
          -- PAM API functions
        , audit
@@ -228,6 +232,50 @@ history pn channel options = do
   res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
 
+channelGroupList :: FromJSON b => PN -> T.Text -> IO (Maybe (ChannelGroup b))
+channelGroupList pn group = do
+  let req = buildGetRequest pn [ "v1"
+                               , "channel-registration"
+                               , "sub-key"
+                               , encodeUtf8 $ sub_key pn
+                               , "channel-group"
+                               , encodeUtf8 group
+                               ]
+            (userIdOptions pn)
+            Nothing
+  res <- httpLbs req (pnManager pn)
+  return (decode $ responseBody res)
+
+channelGroupAddChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupAddChannel = channelGroupDo "add"
+
+channelGroupRemoveChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupRemoveChannel = channelGroupDo "remove"
+
+channelGroupDeleteGroup :: PN -> T.Text -> IO (Maybe ChannelGroupResponse)
+channelGroupDeleteGroup pn group = channelGroupDo "remove" pn group []
+
+channelGroupDo :: T.Text -> PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
+channelGroupDo action' pn group chs  = do
+  let req = buildGetRequest pn [ "v1"
+                               , "channel-registration"
+                               , "sub-key"
+                               , encodeUtf8 $ sub_key pn
+                               , "channel-group"
+                               , encodeUtf8 group
+                               ]
+            (channelOptions ++ userIdOptions pn)
+            Nothing
+  res <- httpLbs req (pnManager pn)
+  return (decode $ responseBody res)
+  where
+    channelOptions ::[(B.ByteString, Maybe B.ByteString)]
+    channelOptions
+      -- delete groupChannel
+      | null chs && action' == "remove" = [("remove", Nothing)]
+      -- add/remove channels from channel group
+      | otherwise = map (\g -> (encodeUtf8 action', Just $ encodeUtf8 g)) chs
+
 leave :: PN -> T.Text -> UUID -> IO ()
 leave pn channel u = do
   let req = buildGetRequest pn [ "v2"
@@ -236,7 +284,7 @@ leave pn channel u = do
                             , encodeUtf8 $ sub_key pn
                             , "channel"
                             , encodeUtf8 channel
-                            , "leave"] [("uuid", encodeUtf8 u)] Nothing
+                            , "leave"] [("uuid", Just $ encodeUtf8 u)] Nothing
   _ <- httpLbs req (pnManager pn)
   return ()
 
@@ -262,7 +310,7 @@ auth pn k = pn{auth_key = Just k}
 pamDo :: B.ByteString -> PN -> Auth -> IO (Maybe Value)
 pamDo pamMethod pn authR = do
   ts <- (bsFromInteger . round) <$> getPOSIXTime
-  let req = buildGetRequest pn pamURI (pamQS ts ++ [("signature", signature ts)]) Nothing
+  let req = buildGetRequest pn pamURI (pamQS ts ++ [("signature", Just $ signature ts)]) Nothing
   res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
   where
@@ -280,7 +328,7 @@ pamDo pamMethod pn authR = do
     msg ts = L.fromStrict $ B.intercalate B.empty [ subKey, "\n"
                                                   , pubKey, "\n"
                                                   , pamMethod, "\n"
-                                                  , B.tail $ renderSimpleQuery True $ pamQS ts]
+                                                  , B.tail $ renderQuery True $ pamQS ts]
 
     pamURI = [ "v1"
              , "auth"
@@ -288,20 +336,20 @@ pamDo pamMethod pn authR = do
              , "sub-key"
              , subKey]
 
-    pamQS ts = [ ("auth", encodeUtf8 authK)
-               , ("channel", encodeUtf8 channel)
-               , ("r", if authRead then "1" else "0")
-               , ("timestamp", ts)
-               , ("w", if authWrite then "1" else "0")]
+    pamQS ts = [ ("auth"     , Just $ encodeUtf8 authK)
+               , ("channel"  , Just $ encodeUtf8 channel)
+               , ("r"        , Just $ if authRead then "1" else "0")
+               , ("timestamp", Just   ts)
+               , ("w"        , Just $ if authWrite then "1" else "0")]
 
 
 -- internal functions
-userIdOptions :: PN -> [(B.ByteString, B.ByteString)]
+userIdOptions :: PN -> [(B.ByteString, Maybe B.ByteString)]
 userIdOptions pn =
-  maybe [] (\u -> [("uuid", encodeUtf8 u)]) (uuid_key pn) ++
-  maybe [] (\a -> [("auth", encodeUtf8 a)]) (auth_key pn)
+  maybe [] (\u -> [("uuid", Just $ encodeUtf8 u)]) (uuid_key pn) ++
+  maybe [] (\a -> [("auth", Just $ encodeUtf8 a)]) (auth_key pn)
 
-buildGetRequest :: PN -> [B.ByteString] -> SimpleQuery -> Maybe Int -> Request
+buildGetRequest :: PN -> [B.ByteString] -> Query -> Maybe Int -> Request
 buildGetRequest pn elems qs timeout =
   defaultRequest
       { host            = encodeUtf8 $ origin pn
@@ -311,11 +359,11 @@ buildGetRequest pn elems qs timeout =
       , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString     = renderSimpleQuery True qs
+      , queryString     = renderQuery True qs
       , secure          = ssl pn
       , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout) }
 
-buildPostRequest :: PN -> [B.ByteString] -> B.ByteString -> SimpleQuery -> Maybe Int -> Request
+buildPostRequest :: PN -> [B.ByteString] -> B.ByteString -> Query -> Maybe Int -> Request
 buildPostRequest pn elems body qs timeout =
   defaultRequest
       { host            = encodeUtf8 $ origin pn
@@ -325,7 +373,7 @@ buildPostRequest pn elems body qs timeout =
       , requestHeaders  = [ ("V", "3.1")
                          , ("User-Agent", "Haskell")
                          , ("Accept", "*/*")]
-      , queryString     = renderSimpleQuery True qs
+      , queryString     = renderQuery True qs
       , secure          = ssl pn
       , responseTimeout = responseTimeoutMicro (maybe 5000000 (* 1000000) timeout)
       , requestBody = RequestBodyBS body

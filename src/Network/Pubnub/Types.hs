@@ -18,10 +18,12 @@ module Network.Pubnub.Types
        , SubscribeResponse(..)
        , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
+       , ChannelGroupResponse(..)
        , UUID
        , Presence(..)
        , Action(..)
        , HereNow(..)
+       , ChannelGroup(..)
        , History(..)
        , HistoryOption(..)
        , HistoryOptions
@@ -158,6 +160,11 @@ newtype EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Times
 
 instance FromJSON EncryptedSubscribeResponse
 
+data ChannelGroupResponse = ChannelGroupResponse String String Bool String
+                     deriving (Show, Generic)
+
+instance FromJSON ChannelGroupResponse
+
 type UUID = T.Text
 type Occupancy = Integer
 
@@ -185,6 +192,11 @@ data HereNow = HereNow { uuids            :: [UUID]
                        , herenowOccupancy :: Occupancy }
              deriving (Show)
 
+data ChannelGroup a = ChannelGroup [a] Integer Integer
+               deriving (Show, Generic)
+
+instance (FromJSON a) => FromJSON (ChannelGroup a)
+
 data History a = History [a] Integer Integer
                deriving (Show, Generic)
 
@@ -197,16 +209,16 @@ data HistoryOption = Start Integer
 
 type HistoryOptions = [HistoryOption]
 
-convertHistoryOptions :: HistoryOptions -> [(B.ByteString, B.ByteString)]
+convertHistoryOptions :: HistoryOptions -> [(B.ByteString, Maybe B.ByteString)]
 convertHistoryOptions =
   map convertHistoryOption
 
-convertHistoryOption :: HistoryOption -> (B.ByteString, B.ByteString)
-convertHistoryOption (Start i)       = ("start", B.pack $ show i)
-convertHistoryOption (End i)         = ("end", B.pack $ show i)
-convertHistoryOption (Reverse True)  = ("reverse", "true")
-convertHistoryOption (Reverse False) = ("reverse", "false")
-convertHistoryOption (Count i)       = ("count", B.pack $ show i)
+convertHistoryOption :: HistoryOption -> (B.ByteString, Maybe B.ByteString)
+convertHistoryOption (Start i)       = ("start"  , Just $ B.pack $ show i)
+convertHistoryOption (End i)         = ("end"    , Just $ B.pack $ show i)
+convertHistoryOption (Reverse True)  = ("reverse", Just   "true")
+convertHistoryOption (Reverse False) = ("reverse", Just   "false")
+convertHistoryOption (Count i)       = ("count"  , Just $ B.pack $ show i)
 
 decimalRight :: T.Text -> Integer
 decimalRight = either (const 0) fst . decimal
