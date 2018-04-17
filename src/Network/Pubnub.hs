@@ -98,10 +98,7 @@ subscribeInternal pn subOpts =
               liftIO (onDisconnect subOpts)
               subscribe' manager pn
         Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
-          let status = responseStatus res
-          let code = statusCode status
-          let msg  = statusMessage status
-          liftIO $ onError subOpts (Just code) (Just msg)
+          liftIO $ onError' res
           connect pn' manager isReconnect
         Left _ -> do
           liftIO $ onError subOpts Nothing Nothing
@@ -121,10 +118,7 @@ subscribeInternal pn subOpts =
         Left (HttpExceptionRequest _ ResponseTimeout) ->
           subscribe' manager pn'
         Left (HttpExceptionRequest _ (StatusCodeException res _)) -> do
-          let status = responseStatus res
-          let code = statusCode status
-          let msg  = statusMessage status
-          liftIO $ onError subOpts (Just code) (Just msg)
+          liftIO $ onError' res
           reconnect pn' manager
         Left _ -> do
           liftIO $ onError subOpts Nothing Nothing
@@ -170,6 +164,13 @@ subscribeInternal pn subOpts =
     decodeJson s = case decode (L.fromStrict (encodeUtf8 s)) of
                        Nothing -> encodeUtf8 s
                        Just l  -> encodeUtf8 l
+    onError' :: Response b -> IO ()
+    onError' res = do
+              let status = responseStatus res
+              let code = statusCode status
+              let msg  = statusMessage status
+              onError subOpts (Just code) (Just msg)
+
 
 publish :: ToJSON a => PN -> T.Text -> a -> IO (Maybe PublishResponse)
 publish pn channel msg = do
@@ -232,19 +233,8 @@ history pn channel options = do
   res <- httpLbs req (pnManager pn)
   return (decode $ responseBody res)
 
-channelGroupList :: FromJSON b => PN -> T.Text -> IO (Maybe (ChannelGroup b))
-channelGroupList pn group = do
-  let req = buildGetRequest pn [ "v1"
-                               , "channel-registration"
-                               , "sub-key"
-                               , encodeUtf8 $ sub_key pn
-                               , "channel-group"
-                               , encodeUtf8 group
-                               ]
-            (userIdOptions pn)
-            Nothing
-  res <- httpLbs req (pnManager pn)
-  return (decode $ responseBody res)
+channelGroupList :: PN -> T.Text -> IO (Maybe ChannelGroupResponse)
+channelGroupList pn group = channelGroupDo "" pn group []
 
 channelGroupAddChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
 channelGroupAddChannel = channelGroupDo "add"
@@ -253,17 +243,18 @@ channelGroupRemoveChannel :: PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupR
 channelGroupRemoveChannel = channelGroupDo "remove"
 
 channelGroupDeleteGroup :: PN -> T.Text -> IO (Maybe ChannelGroupResponse)
-channelGroupDeleteGroup pn group = channelGroupDo "remove" pn group []
+channelGroupDeleteGroup pn group = channelGroupDo "delete" pn group []
 
 channelGroupDo :: T.Text -> PN -> T.Text -> [T.Text] -> IO (Maybe ChannelGroupResponse)
 channelGroupDo action' pn group chs  = do
-  let req = buildGetRequest pn [ "v1"
+  let isRemove = ["remove" | action' == "delete"] -- empty list if not "delete"
+  let req = buildGetRequest pn ([ "v1"
                                , "channel-registration"
                                , "sub-key"
                                , encodeUtf8 $ sub_key pn
                                , "channel-group"
                                , encodeUtf8 group
-                               ]
+                               ] ++ isRemove)
             (channelOptions ++ userIdOptions pn)
             Nothing
   res <- httpLbs req (pnManager pn)
@@ -271,10 +262,10 @@ channelGroupDo action' pn group chs  = do
   where
     channelOptions ::[(B.ByteString, Maybe B.ByteString)]
     channelOptions
-      -- delete groupChannel
-      | null chs && action' == "remove" = [("remove", Nothing)]
-      -- add/remove channels from channel group
-      | otherwise = map (\g -> (encodeUtf8 action', Just $ encodeUtf8 g)) chs
+      -- delete Channel Group
+      | action' == "delete" = []
+      -- add/remove channels from channel group (?add=ch1,ch2,ch3 or ?remove=ch1,ch2,ch3)
+      | otherwise = [(encodeUtf8 action', Just $ encodeUtf8 (T.intercalate "," chs))]
 
 leave :: PN -> T.Text -> UUID -> IO ()
 leave pn channel u = do

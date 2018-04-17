@@ -19,11 +19,11 @@ module Network.Pubnub.Types
        , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
        , ChannelGroupResponse(..)
+       , ChannelGroupPayload(..)
        , UUID
        , Presence(..)
        , Action(..)
        , HereNow(..)
-       , ChannelGroup(..)
        , History(..)
        , HistoryOption(..)
        , HistoryOptions
@@ -35,6 +35,7 @@ import           GHC.Generics
 import           Control.Applicative   (empty)
 import           Data.Aeson
 import           Data.Aeson.TH
+import           Data.Aeson.Types      (Options (..), camelTo2, defaultOptions)
 import           Data.Text.Read
 
 import           Crypto.Cipher.AES
@@ -160,10 +161,24 @@ newtype EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Times
 
 instance FromJSON EncryptedSubscribeResponse
 
-data ChannelGroupResponse = ChannelGroupResponse String String Bool String
-                     deriving (Show, Generic)
+data ChannelGroupResponse = ChannelGroupResponse { cgrService :: T.Text
+                                                 , cgrStatus  :: Int
+                                                 , cgrError   :: Bool
+                                                 , cgrMessage :: Maybe T.Text
+                                                 , cgrPayload :: Maybe ChannelGroupPayload
+                                                 }
+  deriving (Show, Generic)
 
-instance FromJSON ChannelGroupResponse
+instance FromJSON ChannelGroupResponse where
+   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = camelTo2 '_' . drop 3}
+
+data ChannelGroupPayload = ChannelGroupPayload { cgpChannels :: [T.Text]
+                                               , cgpGroup    :: T.Text
+                                               }
+  deriving (Show, Generic)
+
+instance FromJSON ChannelGroupPayload where
+  parseJSON = genericParseJSON defaultOptions{ fieldLabelModifier = camelTo2 '_' . drop 3}
 
 type UUID = T.Text
 type Occupancy = Integer
@@ -191,11 +206,6 @@ data Presence = Presence { action            :: Action
 data HereNow = HereNow { uuids            :: [UUID]
                        , herenowOccupancy :: Occupancy }
              deriving (Show)
-
-data ChannelGroup a = ChannelGroup [a] Integer Integer
-               deriving (Show, Generic)
-
-instance (FromJSON a) => FromJSON (ChannelGroup a)
 
 data History a = History [a] Integer Integer
                deriving (Show, Generic)
