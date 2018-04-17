@@ -15,7 +15,7 @@ main = do
   _ <- subscribe pn defaultSubscribeOptions{ onMsg = output
                                            , onConnect = putStrLn "Connected..." }
   _ <- threadDelay 1000000
-  hello <- publish pn "hello_world" ("hello JDaws" :: T.Text)
+  hello <- publish pn "hello_world" ("hello" :: T.Text)
   print hello
   hello2 <- history pn "hello_world" [ Reverse True
                        , Count 2] :: IO (Maybe (History Value))
