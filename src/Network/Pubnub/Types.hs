@@ -1,6 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
 module Network.Pubnub.Types
        (
@@ -18,6 +18,8 @@ module Network.Pubnub.Types
        , SubscribeResponse(..)
        , EncryptedSubscribeResponse(..)
        , PublishResponse(..)
+       , ChannelGroupResponse(..)
+       , ChannelGroupPayload(..)
        , UUID
        , Presence(..)
        , Action(..)
@@ -28,21 +30,25 @@ module Network.Pubnub.Types
        , setEncryptionKey
        ) where
 
-import GHC.Generics
+import           GHC.Generics
 
-import Control.Applicative (empty)
-import Data.Text.Read
-import Data.Aeson
-import Data.Aeson.TH
+import           Control.Applicative   (empty)
+import           Data.Aeson
+import           Data.Aeson.TH
+import           Data.Aeson.Types      (Options (..), camelTo2, defaultOptions)
+import           Data.Text.Read
 
-import Crypto.Cipher.AES
-import Crypto.Cipher.Types
-import Data.Digest.Pure.SHA
+import           Crypto.Cipher.AES
+import           Crypto.Cipher.Types
+import           Data.Digest.Pure.SHA
 
-import qualified Data.Vector as V
-import qualified Data.Text as T
+import           Network.HTTP.Client   (Manager, defaultManagerSettings,
+                                        newManager)
+
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy  as L
+import qualified Data.Text             as T
+import qualified Data.Vector           as V
 
 data PN = PN { origin         :: T.Text
              , pub_key        :: T.Text
@@ -56,10 +62,13 @@ data PN = PN { origin         :: T.Text
              , cipher_key     :: B.ByteString
              , ctx            :: Maybe AES
              , iv             :: Maybe (IV AES)
-             , ssl            :: Bool}
+             , ssl            :: Bool
+             , pnManager      :: Manager}
 
-defaultPN :: PN
-defaultPN = PN { origin         = "haskell.pubnub.com"
+defaultPN :: IO PN
+defaultPN = do
+    man <- newManager defaultManagerSettings
+    return PN { origin         = "haskell.pubnub.com"
                , pub_key        = T.empty
                , sub_key        = T.empty
                , sec_key        = "0"
@@ -71,7 +80,8 @@ defaultPN = PN { origin         = "haskell.pubnub.com"
                , cipher_key     = B.empty
                , ctx            = Nothing
                , iv             = makeIV (B.pack "0123456789012345")
-               , ssl            = False }
+               , ssl            = False
+               , pnManager      = man }
 
 data SubscribeOptions a = SubscribeOptions { onMsg             :: a -> IO ()
                                            , onConnect         :: IO ()
@@ -131,7 +141,7 @@ instance FromJSON Timestamp where
     Timestamp <$> (withScientific "Integral" $ pure . floor) (V.head a)
   parseJSON _          = empty
 
-data ConnectResponse = ConnectResponse ([Value], Timestamp)
+newtype ConnectResponse = ConnectResponse ([Value], Timestamp)
                          deriving (Show, Generic)
 
 instance FromJSON ConnectResponse
@@ -141,15 +151,34 @@ data PublishResponse = PublishResponse Integer String Timestamp
 
 instance FromJSON PublishResponse
 
-data SubscribeResponse a = SubscribeResponse ([a], Timestamp)
+newtype SubscribeResponse a = SubscribeResponse ([a], Timestamp)
                          deriving (Show, Generic)
 
 instance (FromJSON a) => FromJSON (SubscribeResponse a)
 
-data EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Timestamp)
+newtype EncryptedSubscribeResponse = EncryptedSubscribeResponse ([T.Text], Timestamp)
                          deriving (Show, Generic)
 
 instance FromJSON EncryptedSubscribeResponse
+
+data ChannelGroupResponse = ChannelGroupResponse { cgrService :: T.Text
+                                                 , cgrStatus  :: Int
+                                                 , cgrError   :: Bool
+                                                 , cgrMessage :: Maybe T.Text
+                                                 , cgrPayload :: Maybe ChannelGroupPayload
+                                                 }
+  deriving (Show, Generic)
+
+instance FromJSON ChannelGroupResponse where
+   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = camelTo2 '_' . drop 3}
+
+data ChannelGroupPayload = ChannelGroupPayload { cgpChannels :: [T.Text]
+                                               , cgpGroup    :: T.Text
+                                               }
+  deriving (Show, Generic)
+
+instance FromJSON ChannelGroupPayload where
+  parseJSON = genericParseJSON defaultOptions{ fieldLabelModifier = camelTo2 '_' . drop 3}
 
 type UUID = T.Text
 type Occupancy = Integer
@@ -190,16 +219,16 @@ data HistoryOption = Start Integer
 
 type HistoryOptions = [HistoryOption]
 
-convertHistoryOptions :: HistoryOptions -> [(B.ByteString, B.ByteString)]
+convertHistoryOptions :: HistoryOptions -> [(B.ByteString, Maybe B.ByteString)]
 convertHistoryOptions =
   map convertHistoryOption
 
-convertHistoryOption :: HistoryOption -> (B.ByteString, B.ByteString)
-convertHistoryOption (Start i)       = ("start", B.pack $ show i)
-convertHistoryOption (End i)         = ("end", B.pack $ show i)
-convertHistoryOption (Reverse True)  = ("reverse", "true")
-convertHistoryOption (Reverse False) = ("reverse", "false")
-convertHistoryOption (Count i)       = ("count", B.pack $ show i)
+convertHistoryOption :: HistoryOption -> (B.ByteString, Maybe B.ByteString)
+convertHistoryOption (Start i)       = ("start"  , Just $ B.pack $ show i)
+convertHistoryOption (End i)         = ("end"    , Just $ B.pack $ show i)
+convertHistoryOption (Reverse True)  = ("reverse", Just   "true")
+convertHistoryOption (Reverse False) = ("reverse", Just   "false")
+convertHistoryOption (Count i)       = ("count"  , Just $ B.pack $ show i)
 
 decimalRight :: T.Text -> Integer
 decimalRight = either (const 0) fst . decimal

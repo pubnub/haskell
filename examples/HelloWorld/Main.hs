@@ -2,15 +2,16 @@
 
 module Main where
 
-import Network.Pubnub
-import Network.Pubnub.Types
-import Data.Aeson
-import Control.Concurrent
-import qualified Data.Text as T
+import           Control.Concurrent
+import           Data.Aeson
+import qualified Data.Text            as T
+import           Network.Pubnub
+import           Network.Pubnub.Types
 
 main :: IO ()
 main = do
-  let pn = defaultPN{channels=["hello_world"], sub_key="demo", pub_key="demo"}
+  pn' <- defaultPN
+  let pn = pn'{channels=["hello_world"], sub_key="demo", pub_key="demo"}
   _ <- subscribe pn defaultSubscribeOptions{ onMsg = output
                                            , onConnect = putStrLn "Connected..." }
   _ <- threadDelay 1000000
